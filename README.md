@@ -14,9 +14,35 @@
 
 ## Ближайший MVP
 
-1. Комнаты и подключение игроков
-2. Назначение ролей
-3. Запуск игры и переход по неделям
-4. Расчет состояния цепи поставок
-5. История игры и аналитика
-6. Экспорт сессии в Excel
+Сейчас в проекте уже реализовано:
+
+- создание комнат;
+- подключение игроков;
+- ручное назначение ролей;
+- запуск игровой сессии;
+- прием заказов по игрокам;
+- переход на следующую неделю;
+- хранение истории недель;
+- расчет базовой аналитики по сессии.
+
+## Текущее API
+
+- `POST /rooms`
+- `GET /rooms/{roomId}`
+- `POST /rooms/{roomId}/players`
+- `POST /rooms/{roomId}/roles`
+- `POST /rooms/{roomId}/start`
+- `POST /rooms/{roomId}/orders`
+- `POST /rooms/{roomId}/next`
+- `GET /rooms/{roomId}/session`
+- `GET /rooms/{roomId}/weeks`
+- `GET /rooms/{roomId}/analytics`
+- `GET /rooms/{roomId}/decisions`
+
+## Следующие шаги
+
+- real-time обновления комнаты через `WebSocket` или `SSE`;
+- перенос активных сессий и ходов в `Redis`;
+- архивирование завершенных игр в `PostgreSQL`;
+- экспорт истории сессии в `Excel`;
+- simulation mode и Monte Carlo.

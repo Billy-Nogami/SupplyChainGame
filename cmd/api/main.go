@@ -18,12 +18,13 @@ import (
 func main() {
 	roomStore := memory.NewRoomStore()
 	sessionStore := memory.NewSessionStore()
+	decisionStore := memory.NewDecisionStore()
 	scenarioRepo := memory.NewScenarioRepository()
 	idGenerator := system.NewIDGenerator()
 	clock := system.SystemClock{}
 
 	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
-	gameService := usecase.NewGameService(roomStore, sessionStore, scenarioRepo, idGenerator, clock)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, idGenerator, clock)
 	server := httptransport.NewServer(roomService, gameService)
 
 	httpServer := &http.Server{

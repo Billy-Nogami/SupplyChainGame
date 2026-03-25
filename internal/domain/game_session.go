@@ -7,14 +7,16 @@ import (
 )
 
 var (
-	ErrScenarioDemandEmpty = errors.New("scenario consumer demand must not be empty")
-	ErrInvalidDelay        = errors.New("scenario delays must be positive")
-	ErrNegativeValue       = errors.New("scenario values must not be negative")
-	ErrSessionNotActive    = errors.New("game session is not active")
-	ErrSessionNotFound     = errors.New("game session not found")
-	ErrWeekLimitReached    = errors.New("game session reached max weeks")
-	ErrMissingDecision     = errors.New("missing decision for role")
-	ErrNegativeDecision    = errors.New("decision must not be negative")
+	ErrScenarioDemandEmpty   = errors.New("scenario consumer demand must not be empty")
+	ErrInvalidDelay          = errors.New("scenario delays must be positive")
+	ErrNegativeValue         = errors.New("scenario values must not be negative")
+	ErrSessionNotActive      = errors.New("game session is not active")
+	ErrSessionNotFound       = errors.New("game session not found")
+	ErrWeekLimitReached      = errors.New("game session reached max weeks")
+	ErrMissingDecision       = errors.New("missing decision for role")
+	ErrNegativeDecision      = errors.New("decision must not be negative")
+	ErrWeekNotReady          = errors.New("not all player decisions are submitted")
+	ErrWeekDecisionsNotFound = errors.New("week decisions not found")
 )
 
 type GameSession struct {

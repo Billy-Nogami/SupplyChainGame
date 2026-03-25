@@ -41,6 +41,7 @@ var (
 	ErrRoleAlreadyTaken   = errors.New("role already taken")
 	ErrRoomNotReady       = errors.New("room is not ready to start")
 	ErrGameAlreadyStarted = errors.New("game already started")
+	ErrPlayerRoleMissing  = errors.New("player role is not assigned")
 )
 
 type Player struct {
@@ -197,4 +198,19 @@ func isKnownRole(role Role) bool {
 	}
 
 	return false
+}
+
+func (r Room) RoleOfPlayer(playerID string) (Role, error) {
+	for _, player := range r.Players {
+		if player.ID != playerID {
+			continue
+		}
+		if player.Role == "" {
+			return "", ErrPlayerRoleMissing
+		}
+
+		return player.Role, nil
+	}
+
+	return "", ErrPlayerNotFound
 }

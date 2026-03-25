@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"supply-chain-simulator/internal/domain"
+	"supply-chain-simulator/internal/usecase"
 )
 
 type RoomService interface {
@@ -19,7 +20,12 @@ type RoomService interface {
 
 type GameService interface {
 	StartGame(ctx context.Context, roomID, scenarioID string) (domain.GameSession, error)
+	SubmitOrder(ctx context.Context, roomID, playerID string, order int) (usecase.WeeklyDecisionsSnapshot, error)
+	AdvanceWeek(ctx context.Context, roomID string) (domain.WeekState, error)
 	GetSessionByRoom(ctx context.Context, roomID string) (domain.GameSession, error)
+	GetWeeks(ctx context.Context, roomID string) ([]domain.WeekState, error)
+	GetAnalytics(ctx context.Context, roomID string) (domain.SessionAnalytics, error)
+	GetPendingDecisions(ctx context.Context, roomID string) (usecase.WeeklyDecisionsSnapshot, error)
 }
 
 type Server struct {
@@ -43,6 +49,11 @@ type assignRoleRequest struct {
 
 type startGameRequest struct {
 	ScenarioID string `json:"scenario_id"`
+}
+
+type submitOrderRequest struct {
+	PlayerID string `json:"player_id"`
+	Order    int    `json:"order"`
 }
 
 func NewServer(roomService RoomService, gameService GameService) *Server {
@@ -113,6 +124,27 @@ func (s *Server) handleGetRoomResource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, session)
+	case "weeks":
+		weeks, err := s.gameService.GetWeeks(r.Context(), roomID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, weeks)
+	case "analytics":
+		analytics, err := s.gameService.GetAnalytics(r.Context(), roomID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, analytics)
+	case "decisions":
+		decisions, err := s.gameService.GetPendingDecisions(r.Context(), roomID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, decisions)
 	default:
 		http.NotFound(w, r)
 	}
@@ -132,6 +164,10 @@ func (s *Server) handleRoomCommand(w http.ResponseWriter, r *http.Request) {
 		s.handleAssignRole(w, r, roomID)
 	case "start":
 		s.handleStartGame(w, r, roomID)
+	case "orders":
+		s.handleSubmitOrder(w, r, roomID)
+	case "next":
+		s.handleAdvanceWeek(w, r, roomID)
 	default:
 		http.NotFound(w, r)
 	}
@@ -187,6 +223,32 @@ func (s *Server) handleStartGame(w http.ResponseWriter, r *http.Request, roomID 
 	writeJSON(w, http.StatusCreated, session)
 }
 
+func (s *Server) handleSubmitOrder(w http.ResponseWriter, r *http.Request, roomID string) {
+	var req submitOrderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	decisions, err := s.gameService.SubmitOrder(r.Context(), roomID, req.PlayerID, req.Order)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, decisions)
+}
+
+func (s *Server) handleAdvanceWeek(w http.ResponseWriter, r *http.Request, roomID string) {
+	weekState, err := s.gameService.AdvanceWeek(r.Context(), roomID)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, weekState)
+}
+
 func parseRoomPath(path string) (roomID, action string) {
 	trimmed := strings.Trim(path, "/")
 	parts := strings.Split(trimmed, "/")
@@ -206,19 +268,25 @@ func parseRoomPath(path string) (roomID, action string) {
 func writeDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrRoomNotFound),
-		errors.Is(err, domain.ErrSessionNotFound):
+		errors.Is(err, domain.ErrSessionNotFound),
+		errors.Is(err, domain.ErrWeekDecisionsNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, domain.ErrInvalidMaxWeeks),
 		errors.Is(err, domain.ErrEmptyPlayerName),
 		errors.Is(err, domain.ErrPlayerAlreadyIn),
 		errors.Is(err, domain.ErrPlayerNotFound),
-		errors.Is(err, domain.ErrInvalidRole):
+		errors.Is(err, domain.ErrInvalidRole),
+		errors.Is(err, domain.ErrNegativeDecision),
+		errors.Is(err, domain.ErrPlayerRoleMissing):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, domain.ErrRoomFull),
 		errors.Is(err, domain.ErrCannotJoinStarted),
 		errors.Is(err, domain.ErrRoleAlreadyTaken),
 		errors.Is(err, domain.ErrRoomNotReady),
-		errors.Is(err, domain.ErrGameAlreadyStarted):
+		errors.Is(err, domain.ErrGameAlreadyStarted),
+		errors.Is(err, domain.ErrWeekNotReady),
+		errors.Is(err, domain.ErrSessionNotActive),
+		errors.Is(err, domain.ErrWeekLimitReached):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal server error")

@@ -1,0 +1,273 @@
+package http
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"supply-chain-simulator/internal/domain"
+	"supply-chain-simulator/internal/infrastructure/memory"
+	"supply-chain-simulator/internal/usecase"
+)
+
+func TestServerRoomGameplayFlow(t *testing.T) {
+	server := newTestServer()
+
+	room := createRoom(t, server)
+
+	var players []domain.Player
+	for _, name := range []string{"Alice", "Bob", "Charlie", "Dana"} {
+		room = joinRoom(t, server, room.ID, name)
+		players = room.Players
+	}
+
+	for i, player := range players {
+		assignRole(t, server, room.ID, player.ID, domain.AllRoles[i])
+	}
+
+	startedSession := startGame(t, server, room.ID)
+	if startedSession.RoomID != room.ID {
+		t.Fatalf("session room id = %s, want %s", startedSession.RoomID, room.ID)
+	}
+
+	for i, player := range players {
+		snapshot := submitOrder(t, server, room.ID, player.ID, 4)
+		if i == len(players)-1 && !snapshot.Ready {
+			t.Fatal("snapshot.Ready = false, want true")
+		}
+	}
+
+	weekState := advanceWeek(t, server, room.ID)
+	if weekState.Week != 1 {
+		t.Fatalf("week state week = %d, want 1", weekState.Week)
+	}
+
+	weeks := getWeeks(t, server, room.ID)
+	if len(weeks) != 1 {
+		t.Fatalf("weeks length = %d, want 1", len(weeks))
+	}
+
+	analytics := getAnalytics(t, server, room.ID)
+	if analytics.TotalCost != 48 {
+		t.Fatalf("analytics total cost = %d, want 48", analytics.TotalCost)
+	}
+
+	decisions := getDecisions(t, server, room.ID)
+	if decisions.Week != 2 {
+		t.Fatalf("decisions week = %d, want 2", decisions.Week)
+	}
+}
+
+func newTestServer() *Server {
+	roomStore := memory.NewRoomStore()
+	sessionStore := memory.NewSessionStore()
+	decisionStore := memory.NewDecisionStore()
+	scenarioRepo := memory.NewScenarioRepository()
+	idGenerator := &stubIDGenerator{ids: []string{"room-1", "player-1", "player-2", "player-3", "player-4", "session-1"}}
+	clock := stubClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}
+
+	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, idGenerator, clock)
+
+	return NewServer(roomService, gameService)
+}
+
+func createRoom(t *testing.T, server *Server) domain.Room {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/rooms", bytes.NewBufferString(`{"max_weeks":30}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create room status = %d, want %d, body = %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var room domain.Room
+	if err := json.Unmarshal(rec.Body.Bytes(), &room); err != nil {
+		t.Fatalf("json.Unmarshal(room) error = %v", err)
+	}
+
+	return room
+}
+
+func joinRoom(t *testing.T, server *Server, roomID, name string) domain.Room {
+	t.Helper()
+
+	body, _ := json.Marshal(map[string]string{"name": name})
+	req := httptest.NewRequest(http.MethodPost, "/rooms/"+roomID+"/players", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("join room status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var room domain.Room
+	if err := json.Unmarshal(rec.Body.Bytes(), &room); err != nil {
+		t.Fatalf("json.Unmarshal(join room) error = %v", err)
+	}
+
+	return room
+}
+
+func assignRole(t *testing.T, server *Server, roomID, playerID string, role domain.Role) {
+	t.Helper()
+
+	body, _ := json.Marshal(map[string]string{
+		"player_id": playerID,
+		"role":      string(role),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/rooms/"+roomID+"/roles", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("assign role status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+func startGame(t *testing.T, server *Server, roomID string) domain.GameSession {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/rooms/"+roomID+"/start", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("start game status = %d, want %d, body = %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var session domain.GameSession
+	if err := json.Unmarshal(rec.Body.Bytes(), &session); err != nil {
+		t.Fatalf("json.Unmarshal(session) error = %v", err)
+	}
+
+	return session
+}
+
+func submitOrder(t *testing.T, server *Server, roomID, playerID string, order int) usecase.WeeklyDecisionsSnapshot {
+	t.Helper()
+
+	body, _ := json.Marshal(map[string]any{
+		"player_id": playerID,
+		"order":     order,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/rooms/"+roomID+"/orders", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("submit order status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var snapshot usecase.WeeklyDecisionsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal(decisions) error = %v", err)
+	}
+
+	return snapshot
+}
+
+func advanceWeek(t *testing.T, server *Server, roomID string) domain.WeekState {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/rooms/"+roomID+"/next", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("advance week status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var weekState domain.WeekState
+	if err := json.Unmarshal(rec.Body.Bytes(), &weekState); err != nil {
+		t.Fatalf("json.Unmarshal(weekState) error = %v", err)
+	}
+
+	return weekState
+}
+
+func getWeeks(t *testing.T, server *Server, roomID string) []domain.WeekState {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/rooms/"+roomID+"/weeks", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get weeks status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var weeks []domain.WeekState
+	if err := json.Unmarshal(rec.Body.Bytes(), &weeks); err != nil {
+		t.Fatalf("json.Unmarshal(weeks) error = %v", err)
+	}
+
+	return weeks
+}
+
+func getDecisions(t *testing.T, server *Server, roomID string) usecase.WeeklyDecisionsSnapshot {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/rooms/"+roomID+"/decisions", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get decisions status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var snapshot usecase.WeeklyDecisionsSnapshot
+	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("json.Unmarshal(decisions) error = %v", err)
+	}
+
+	return snapshot
+}
+
+func getAnalytics(t *testing.T, server *Server, roomID string) domain.SessionAnalytics {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/rooms/"+roomID+"/analytics", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get analytics status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var analytics domain.SessionAnalytics
+	if err := json.Unmarshal(rec.Body.Bytes(), &analytics); err != nil {
+		t.Fatalf("json.Unmarshal(analytics) error = %v", err)
+	}
+
+	return analytics
+}
+
+type stubIDGenerator struct {
+	ids []string
+	pos int
+}
+
+func (s *stubIDGenerator) NewID() (string, error) {
+	value := s.ids[s.pos]
+	s.pos++
+	return value, nil
+}
+
+type stubClock struct {
+	now time.Time
+}
+
+func (s stubClock) Now() time.Time {
+	return s.now
+}
