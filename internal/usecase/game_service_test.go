@@ -12,6 +12,7 @@ import (
 func TestStartGameCreatesSessionAndAssignsRoles(t *testing.T) {
 	roomStore := memory.NewRoomStore()
 	sessionStore := memory.NewSessionStore()
+	scenarioRepo := memory.NewScenarioRepository()
 	idGenerator := &stubIDGenerator{ids: []string{"room-1", "player-1", "player-2", "player-3", "player-4", "session-1"}}
 	clock := stubClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}
 
@@ -29,8 +30,8 @@ func TestStartGameCreatesSessionAndAssignsRoles(t *testing.T) {
 		}
 	}
 
-	gameService := NewGameService(roomStore, sessionStore, idGenerator, clock)
-	session, err := gameService.StartGame(context.Background(), room.ID, testScenario())
+	gameService := NewGameService(roomStore, sessionStore, scenarioRepo, idGenerator, clock)
+	session, err := gameService.StartGame(context.Background(), room.ID, "")
 	if err != nil {
 		t.Fatalf("StartGame() error = %v", err)
 	}
@@ -48,6 +49,9 @@ func TestStartGameCreatesSessionAndAssignsRoles(t *testing.T) {
 	}
 	if updatedRoom.Status != domain.GameStatusActive {
 		t.Fatalf("room status = %s, want %s", updatedRoom.Status, domain.GameStatusActive)
+	}
+	if updatedRoom.ScenarioID != "default-beer-game" {
+		t.Fatalf("room scenario id = %s, want default-beer-game", updatedRoom.ScenarioID)
 	}
 
 	roleSet := make(map[domain.Role]bool, len(updatedRoom.Players))
@@ -79,20 +83,4 @@ type stubClock struct {
 
 func (s stubClock) Now() time.Time {
 	return s.now
-}
-
-func testScenario() domain.Scenario {
-	return domain.Scenario{
-		ID:                    "scenario-1",
-		InitialInventory:      12,
-		InitialBacklog:        0,
-		InitialPipelineGoods:  []int{4, 4},
-		InitialPipelineOrders: []int{4},
-		ConsumerDemand:        []int{5, 5, 5, 5, 9, 9},
-		ShippingDelay:         2,
-		OrderDelay:            1,
-		ProductionDelay:       2,
-		HoldingCost:           1,
-		BacklogCost:           2,
-	}
 }

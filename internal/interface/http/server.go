@@ -14,10 +14,17 @@ type RoomService interface {
 	CreateRoom(ctx context.Context, maxWeeks int) (domain.Room, error)
 	GetRoom(ctx context.Context, roomID string) (domain.Room, error)
 	JoinRoom(ctx context.Context, roomID, playerName string) (domain.Room, error)
+	AssignRole(ctx context.Context, roomID, playerID string, role domain.Role) (domain.Room, error)
+}
+
+type GameService interface {
+	StartGame(ctx context.Context, roomID, scenarioID string) (domain.GameSession, error)
+	GetSessionByRoom(ctx context.Context, roomID string) (domain.GameSession, error)
 }
 
 type Server struct {
 	roomService RoomService
+	gameService GameService
 	mux         *http.ServeMux
 }
 
@@ -29,9 +36,19 @@ type joinRoomRequest struct {
 	Name string `json:"name"`
 }
 
-func NewServer(roomService RoomService) *Server {
+type assignRoleRequest struct {
+	PlayerID string `json:"player_id"`
+	Role     string `json:"role"`
+}
+
+type startGameRequest struct {
+	ScenarioID string `json:"scenario_id"`
+}
+
+func NewServer(roomService RoomService, gameService GameService) *Server {
 	server := &Server{
 		roomService: roomService,
+		gameService: gameService,
 		mux:         http.NewServeMux(),
 	}
 
@@ -47,8 +64,8 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("POST /rooms", s.handleCreateRoom)
-	s.mux.HandleFunc("GET /rooms/", s.handleGetRoom)
-	s.mux.HandleFunc("POST /rooms/", s.handleJoinRoom)
+	s.mux.HandleFunc("GET /rooms/", s.handleGetRoomResource)
+	s.mux.HandleFunc("POST /rooms/", s.handleRoomCommand)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -74,29 +91,53 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, room)
 }
 
-func (s *Server) handleGetRoom(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetRoomResource(w http.ResponseWriter, r *http.Request) {
 	roomID, action := parseRoomPath(r.URL.Path)
-	if roomID == "" || action != "" {
+	if roomID == "" {
 		http.NotFound(w, r)
 		return
 	}
 
-	room, err := s.roomService.GetRoom(r.Context(), roomID)
-	if err != nil {
-		writeDomainError(w, err)
-		return
+	switch action {
+	case "":
+		room, err := s.roomService.GetRoom(r.Context(), roomID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, room)
+	case "session":
+		session, err := s.gameService.GetSessionByRoom(r.Context(), roomID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, session)
+	default:
+		http.NotFound(w, r)
 	}
-
-	writeJSON(w, http.StatusOK, room)
 }
 
-func (s *Server) handleJoinRoom(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRoomCommand(w http.ResponseWriter, r *http.Request) {
 	roomID, action := parseRoomPath(r.URL.Path)
-	if roomID == "" || action != "players" {
+	if roomID == "" {
 		http.NotFound(w, r)
 		return
 	}
 
+	switch action {
+	case "players":
+		s.handleJoinRoom(w, r, roomID)
+	case "roles":
+		s.handleAssignRole(w, r, roomID)
+	case "start":
+		s.handleStartGame(w, r, roomID)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) handleJoinRoom(w http.ResponseWriter, r *http.Request, roomID string) {
 	var req joinRoomRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -112,6 +153,40 @@ func (s *Server) handleJoinRoom(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, room)
 }
 
+func (s *Server) handleAssignRole(w http.ResponseWriter, r *http.Request, roomID string) {
+	var req assignRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	room, err := s.roomService.AssignRole(r.Context(), roomID, req.PlayerID, domain.Role(req.Role))
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, room)
+}
+
+func (s *Server) handleStartGame(w http.ResponseWriter, r *http.Request, roomID string) {
+	var req startGameRequest
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
+
+	session, err := s.gameService.StartGame(r.Context(), roomID, req.ScenarioID)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, session)
+}
+
 func parseRoomPath(path string) (roomID, action string) {
 	trimmed := strings.Trim(path, "/")
 	parts := strings.Split(trimmed, "/")
@@ -124,19 +199,26 @@ func parseRoomPath(path string) (roomID, action string) {
 	if len(parts) == 3 {
 		return parts[1], parts[2]
 	}
+
 	return "", ""
 }
 
 func writeDomainError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, domain.ErrRoomNotFound):
+	case errors.Is(err, domain.ErrRoomNotFound),
+		errors.Is(err, domain.ErrSessionNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, domain.ErrInvalidMaxWeeks),
 		errors.Is(err, domain.ErrEmptyPlayerName),
-		errors.Is(err, domain.ErrPlayerAlreadyIn):
+		errors.Is(err, domain.ErrPlayerAlreadyIn),
+		errors.Is(err, domain.ErrPlayerNotFound),
+		errors.Is(err, domain.ErrInvalidRole):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, domain.ErrRoomFull),
-		errors.Is(err, domain.ErrCannotJoinStarted):
+		errors.Is(err, domain.ErrCannotJoinStarted),
+		errors.Is(err, domain.ErrRoleAlreadyTaken),
+		errors.Is(err, domain.ErrRoomNotReady),
+		errors.Is(err, domain.ErrGameAlreadyStarted):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal server error")

@@ -17,8 +17,14 @@ import (
 
 func main() {
 	roomStore := memory.NewRoomStore()
-	roomService := usecase.NewRoomService(roomStore, system.NewIDGenerator(), system.SystemClock{})
-	server := httptransport.NewServer(roomService)
+	sessionStore := memory.NewSessionStore()
+	scenarioRepo := memory.NewScenarioRepository()
+	idGenerator := system.NewIDGenerator()
+	clock := system.SystemClock{}
+
+	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
+	gameService := usecase.NewGameService(roomStore, sessionStore, scenarioRepo, idGenerator, clock)
+	server := httptransport.NewServer(roomService, gameService)
 
 	httpServer := &http.Server{
 		Addr:              ":8080",

@@ -11,6 +11,7 @@ var (
 	ErrInvalidDelay        = errors.New("scenario delays must be positive")
 	ErrNegativeValue       = errors.New("scenario values must not be negative")
 	ErrSessionNotActive    = errors.New("game session is not active")
+	ErrSessionNotFound     = errors.New("game session not found")
 	ErrWeekLimitReached    = errors.New("game session reached max weeks")
 	ErrMissingDecision     = errors.New("missing decision for role")
 	ErrNegativeDecision    = errors.New("decision must not be negative")

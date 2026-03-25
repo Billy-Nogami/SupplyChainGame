@@ -36,7 +36,7 @@ func (s *SessionStore) GetByID(_ context.Context, sessionID string) (domain.Game
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return domain.GameSession{}, domain.ErrRoomNotFound
+		return domain.GameSession{}, domain.ErrSessionNotFound
 	}
 
 	return session, nil
@@ -48,12 +48,12 @@ func (s *SessionStore) GetByRoomID(_ context.Context, roomID string) (domain.Gam
 
 	sessionID, ok := s.byRoomID[roomID]
 	if !ok {
-		return domain.GameSession{}, domain.ErrRoomNotFound
+		return domain.GameSession{}, domain.ErrSessionNotFound
 	}
 
 	session, ok := s.sessions[sessionID]
 	if !ok {
-		return domain.GameSession{}, domain.ErrRoomNotFound
+		return domain.GameSession{}, domain.ErrSessionNotFound
 	}
 
 	return session, nil

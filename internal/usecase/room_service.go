@@ -66,3 +66,20 @@ func (s *RoomService) JoinRoom(ctx context.Context, roomID, playerName string) (
 
 	return room, nil
 }
+
+func (s *RoomService) AssignRole(ctx context.Context, roomID, playerID string, role domain.Role) (domain.Room, error) {
+	room, err := s.roomStore.GetByID(ctx, roomID)
+	if err != nil {
+		return domain.Room{}, err
+	}
+
+	if err := room.AssignRole(playerID, role, s.clock.Now()); err != nil {
+		return domain.Room{}, err
+	}
+
+	if err := s.roomStore.Save(ctx, room); err != nil {
+		return domain.Room{}, err
+	}
+
+	return room, nil
+}
