@@ -33,6 +33,7 @@ type GameService interface {
 type Server struct {
 	roomService RoomService
 	gameService GameService
+	events      RoomEventSubscriber
 	mux         *http.ServeMux
 }
 
@@ -58,10 +59,11 @@ type submitOrderRequest struct {
 	Order    int    `json:"order"`
 }
 
-func NewServer(roomService RoomService, gameService GameService) *Server {
+func NewServer(roomService RoomService, gameService GameService, events RoomEventSubscriber) *Server {
 	server := &Server{
 		roomService: roomService,
 		gameService: gameService,
+		events:      events,
 		mux:         http.NewServeMux(),
 	}
 
@@ -154,6 +156,8 @@ func (s *Server) handleGetRoomResource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeFile(w, http.StatusOK, exportedFile)
+	case "events":
+		s.handleEvents(w, r, roomID)
 	default:
 		http.NotFound(w, r)
 	}

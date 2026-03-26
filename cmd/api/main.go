@@ -22,14 +22,15 @@ func main() {
 	roomStore := memory.NewRoomStore()
 	sessionStore := memory.NewSessionStore()
 	decisionStore := memory.NewDecisionStore()
+	eventBus := memory.NewRoomEventBus()
 	scenarioRepo := memory.NewScenarioRepository()
 	exporter := export.NewXLSXExporter()
 	idGenerator := system.NewIDGenerator()
 	clock := system.SystemClock{}
 
-	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
-	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, idGenerator, clock)
-	server := httptransport.NewServer(roomService, gameService)
+	roomService := usecase.NewRoomService(roomStore, idGenerator, clock, eventBus)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, eventBus, idGenerator, clock)
+	server := httptransport.NewServer(roomService, gameService, eventBus)
 	handler := httptransport.WithCORS(server.Handler(), cfg.AllowedOrigins)
 
 	httpServer := &http.Server{

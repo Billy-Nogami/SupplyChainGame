@@ -1,10 +1,13 @@
 package http
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,19 +92,49 @@ func TestWithCORSPrefight(t *testing.T) {
 	}
 }
 
+func TestRoomEventsStreamReturnsInitialSnapshot(t *testing.T) {
+	server := newTestServer()
+	room := createRoom(t, server)
+
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	resp, err := http.Get(testServer.URL + "/rooms/" + room.ID + "/events")
+	if err != nil {
+		t.Fatalf("http.Get(events) error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if contentType := resp.Header.Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
+		t.Fatalf("content-type = %q, want text/event-stream", contentType)
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	eventLine := readLine(t, reader)
+	dataLine := readLine(t, reader)
+
+	if eventLine != "event: room.snapshot" {
+		t.Fatalf("event line = %q, want %q", eventLine, "event: room.snapshot")
+	}
+	if !strings.Contains(dataLine, "\"room_id\":\""+room.ID+"\"") {
+		t.Fatalf("data line = %q, want room id payload", dataLine)
+	}
+}
+
 func newTestServer() *Server {
 	roomStore := memory.NewRoomStore()
 	sessionStore := memory.NewSessionStore()
 	decisionStore := memory.NewDecisionStore()
 	scenarioRepo := memory.NewScenarioRepository()
+	eventBus := memory.NewRoomEventBus()
 	idGenerator := &stubIDGenerator{ids: []string{"room-1", "player-1", "player-2", "player-3", "player-4", "session-1"}}
 	clock := stubClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}
 	exporter := infraexport.NewXLSXExporter()
 
-	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
-	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, idGenerator, clock)
+	roomService := usecase.NewRoomService(roomStore, idGenerator, clock, eventBus)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, eventBus, idGenerator, clock)
 
-	return NewServer(roomService, gameService)
+	return NewServer(roomService, gameService, eventBus)
 }
 
 func createRoom(t *testing.T, server *Server) domain.Room {
@@ -294,6 +327,17 @@ func exportSession(t *testing.T, server *Server, roomID string) []byte {
 	}
 
 	return rec.Body.Bytes()
+}
+
+func readLine(t *testing.T, reader *bufio.Reader) string {
+	t.Helper()
+
+	line, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		t.Fatalf("ReadString() error = %v", err)
+	}
+
+	return strings.TrimRight(line, "\n")
 }
 
 type stubIDGenerator struct {

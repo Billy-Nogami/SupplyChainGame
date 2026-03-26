@@ -7,16 +7,22 @@ import (
 )
 
 type RoomService struct {
-	roomStore   RoomStore
-	idGenerator IDGenerator
-	clock       Clock
+	roomStore      RoomStore
+	idGenerator    IDGenerator
+	clock          Clock
+	eventPublisher RoomEventPublisher
 }
 
-func NewRoomService(roomStore RoomStore, idGenerator IDGenerator, clock Clock) *RoomService {
+func NewRoomService(roomStore RoomStore, idGenerator IDGenerator, clock Clock, eventPublisher RoomEventPublisher) *RoomService {
+	if eventPublisher == nil {
+		eventPublisher = NopRoomEventPublisher{}
+	}
+
 	return &RoomService{
-		roomStore:   roomStore,
-		idGenerator: idGenerator,
-		clock:       clock,
+		roomStore:      roomStore,
+		idGenerator:    idGenerator,
+		clock:          clock,
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -34,6 +40,12 @@ func (s *RoomService) CreateRoom(ctx context.Context, maxWeeks int) (domain.Room
 	if err := s.roomStore.Save(ctx, room); err != nil {
 		return domain.Room{}, err
 	}
+	_ = s.eventPublisher.PublishRoomEvent(ctx, RoomEvent{
+		Type:       "room.created",
+		RoomID:     room.ID,
+		OccurredAt: room.UpdatedAt,
+		Room:       &room,
+	})
 
 	return room, nil
 }
@@ -63,6 +75,12 @@ func (s *RoomService) JoinRoom(ctx context.Context, roomID, playerName string) (
 	if err := s.roomStore.Save(ctx, room); err != nil {
 		return domain.Room{}, err
 	}
+	_ = s.eventPublisher.PublishRoomEvent(ctx, RoomEvent{
+		Type:       "room.player_joined",
+		RoomID:     room.ID,
+		OccurredAt: room.UpdatedAt,
+		Room:       &room,
+	})
 
 	return room, nil
 }
@@ -80,6 +98,12 @@ func (s *RoomService) AssignRole(ctx context.Context, roomID, playerID string, r
 	if err := s.roomStore.Save(ctx, room); err != nil {
 		return domain.Room{}, err
 	}
+	_ = s.eventPublisher.PublishRoomEvent(ctx, RoomEvent{
+		Type:       "room.role_assigned",
+		RoomID:     room.ID,
+		OccurredAt: room.UpdatedAt,
+		Room:       &room,
+	})
 
 	return room, nil
 }

@@ -179,6 +179,54 @@ func TestExportSessionReturnsFile(t *testing.T) {
 	}
 }
 
+func TestSubmitOrderPublishesRoomEvent(t *testing.T) {
+	roomStore := memory.NewRoomStore()
+	sessionStore := memory.NewSessionStore()
+	decisionStore := memory.NewDecisionStore()
+	scenarioRepo := memory.NewScenarioRepository()
+	eventBus := memory.NewRoomEventBus()
+	idGenerator := &stubIDGenerator{ids: []string{"room-1", "player-1", "player-2", "player-3", "player-4", "session-1"}}
+	clock := stubClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}
+	exporter := stubExporter{}
+
+	roomService := usecase.NewRoomService(roomStore, idGenerator, clock, eventBus)
+	room, err := roomService.CreateRoom(context.Background(), 30)
+	if err != nil {
+		t.Fatalf("CreateRoom() error = %v", err)
+	}
+
+	for i, name := range []string{"Alice", "Bob", "Charlie", "Dana"} {
+		room, err = roomService.JoinRoom(context.Background(), room.ID, name)
+		if err != nil {
+			t.Fatalf("JoinRoom() error = %v", err)
+		}
+		room, err = roomService.AssignRole(context.Background(), room.ID, room.Players[i].ID, domain.AllRoles[i])
+		if err != nil {
+			t.Fatalf("AssignRole() error = %v", err)
+		}
+	}
+
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, eventBus, idGenerator, clock)
+	if _, err := gameService.StartGame(context.Background(), room.ID, ""); err != nil {
+		t.Fatalf("StartGame() error = %v", err)
+	}
+
+	events, cancel := eventBus.Subscribe(room.ID)
+	defer cancel()
+
+	if _, err := gameService.SubmitOrder(context.Background(), room.ID, room.Players[0].ID, 4); err != nil {
+		t.Fatalf("SubmitOrder() error = %v", err)
+	}
+
+	event := <-events
+	if event.Type != "game.order_submitted" {
+		t.Fatalf("event type = %s, want %s", event.Type, "game.order_submitted")
+	}
+	if event.Decisions == nil || len(event.Decisions.Orders) != 1 {
+		t.Fatal("event decisions are missing")
+	}
+}
+
 func newStartedGameServices(t *testing.T) (*usecase.GameService, *usecase.RoomService, domain.Room) {
 	t.Helper()
 
@@ -186,11 +234,12 @@ func newStartedGameServices(t *testing.T) (*usecase.GameService, *usecase.RoomSe
 	sessionStore := memory.NewSessionStore()
 	decisionStore := memory.NewDecisionStore()
 	scenarioRepo := memory.NewScenarioRepository()
+	eventBus := memory.NewRoomEventBus()
 	idGenerator := &stubIDGenerator{ids: []string{"room-1", "player-1", "player-2", "player-3", "player-4", "session-1"}}
 	clock := stubClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}
 	exporter := stubExporter{}
 
-	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
+	roomService := usecase.NewRoomService(roomStore, idGenerator, clock, eventBus)
 	room, err := roomService.CreateRoom(context.Background(), 30)
 	if err != nil {
 		t.Fatalf("CreateRoom() error = %v", err)
@@ -209,7 +258,7 @@ func newStartedGameServices(t *testing.T) (*usecase.GameService, *usecase.RoomSe
 		}
 	}
 
-	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, idGenerator, clock)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, eventBus, idGenerator, clock)
 	if _, err := gameService.StartGame(context.Background(), room.ID, ""); err != nil {
 		t.Fatalf("StartGame() error = %v", err)
 	}

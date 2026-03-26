@@ -19,13 +19,14 @@ type ScenarioRepository interface {
 }
 
 type GameService struct {
-	roomStore     RoomStore
-	sessionStore  SessionStore
-	decisionStore DecisionStore
-	scenarios     ScenarioRepository
-	exporter      SessionExporter
-	idGenerator   IDGenerator
-	clock         Clock
+	roomStore      RoomStore
+	sessionStore   SessionStore
+	decisionStore  DecisionStore
+	scenarios      ScenarioRepository
+	exporter       SessionExporter
+	eventPublisher RoomEventPublisher
+	idGenerator    IDGenerator
+	clock          Clock
 }
 
 func NewGameService(
@@ -34,17 +35,23 @@ func NewGameService(
 	decisionStore DecisionStore,
 	scenarios ScenarioRepository,
 	exporter SessionExporter,
+	eventPublisher RoomEventPublisher,
 	idGenerator IDGenerator,
 	clock Clock,
 ) *GameService {
+	if eventPublisher == nil {
+		eventPublisher = NopRoomEventPublisher{}
+	}
+
 	return &GameService{
-		roomStore:     roomStore,
-		sessionStore:  sessionStore,
-		decisionStore: decisionStore,
-		scenarios:     scenarios,
-		exporter:      exporter,
-		idGenerator:   idGenerator,
-		clock:         clock,
+		roomStore:      roomStore,
+		sessionStore:   sessionStore,
+		decisionStore:  decisionStore,
+		scenarios:      scenarios,
+		exporter:       exporter,
+		eventPublisher: eventPublisher,
+		idGenerator:    idGenerator,
+		clock:          clock,
 	}
 }
 
@@ -83,6 +90,7 @@ func (s *GameService) StartGame(ctx context.Context, roomID, scenarioID string) 
 	if err := s.sessionStore.Save(ctx, session); err != nil {
 		return domain.GameSession{}, err
 	}
+	s.publishRoomEvent(ctx, "game.started", room, session, nil)
 
 	return session, nil
 }
@@ -129,7 +137,10 @@ func (s *GameService) SubmitOrder(ctx context.Context, roomID, playerID string, 
 		return WeeklyDecisionsSnapshot{}, err
 	}
 
-	return decisions.Snapshot(), nil
+	snapshot := decisions.Snapshot()
+	s.publishRoomEvent(ctx, "game.order_submitted", room, session, &snapshot)
+
+	return snapshot, nil
 }
 
 func (s *GameService) AdvanceWeek(ctx context.Context, roomID string) (domain.WeekState, error) {
@@ -173,6 +184,7 @@ func (s *GameService) AdvanceWeek(ctx context.Context, roomID string) (domain.We
 	if err := s.decisionStore.DeleteByRoomAndWeek(ctx, roomID, week); err != nil {
 		return domain.WeekState{}, err
 	}
+	s.publishRoomEvent(ctx, "game.week_advanced", room, session, nil)
 
 	return weekState, nil
 }
@@ -252,4 +264,23 @@ func currentPlayableWeek(session domain.GameSession) int {
 		return session.CurrentWeek
 	}
 	return session.CurrentWeek + 1
+}
+
+func (s *GameService) publishRoomEvent(
+	ctx context.Context,
+	eventType string,
+	room domain.Room,
+	session domain.GameSession,
+	decisions *WeeklyDecisionsSnapshot,
+) {
+	analytics := domain.CalculateSessionAnalytics(session)
+	_ = s.eventPublisher.PublishRoomEvent(ctx, RoomEvent{
+		Type:       eventType,
+		RoomID:     room.ID,
+		OccurredAt: s.clock.Now(),
+		Room:       &room,
+		Session:    &session,
+		Decisions:  decisions,
+		Analytics:  &analytics,
+	})
 }

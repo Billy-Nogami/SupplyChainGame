@@ -39,6 +39,7 @@
 - `GET /rooms/{roomId}/analytics`
 - `GET /rooms/{roomId}/decisions`
 - `GET /rooms/{roomId}/export`
+- `GET /rooms/{roomId}/events` (`SSE`)
 
 ## Запуск
 
@@ -69,8 +70,7 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 
 ## Следующие шаги
 
-- real-time обновления комнаты через `WebSocket` или `SSE`;
+- frontend для комнат и дашборда;
 - перенос активных сессий и ходов в `Redis`;
 - архивирование завершенных игр в `PostgreSQL`;
-- frontend для комнат и дашборда;
 - simulation mode и Monte Carlo.
