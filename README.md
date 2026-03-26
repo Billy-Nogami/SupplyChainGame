@@ -84,6 +84,27 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 - [`.env.example`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/.env.example)
 - [`Makefile`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/Makefile)
 
+## Логи
+
+Приложение пишет:
+
+- HTTP request logs;
+- ключевые игровые события;
+- подключение и отключение `SSE`;
+- выбор режима хранилища (`memory` или `Redis`).
+
+Локально через Docker:
+
+```bash
+docker compose logs -f api
+```
+
+Все сервисы сразу:
+
+```bash
+docker compose logs -f
+```
+
 ## Frontend
 
 Встроенный frontend уже отдаётся самим Go-сервером:

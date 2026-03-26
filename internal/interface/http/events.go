@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"supply-chain-simulator/internal/usecase"
@@ -32,6 +33,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, roomID str
 
 	initialEvent, err := s.snapshotEvent(r.Context(), roomID, playerID)
 	if err != nil {
+		log.Printf("sse_snapshot_error room_id=%s player_id=%s err=%v", roomID, playerID, err)
 		writeDomainError(w, err)
 		return
 	}
@@ -42,9 +44,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, roomID str
 
 	writeSSEEvent(w, initialEvent)
 	flusher.Flush()
+	log.Printf("sse_connected room_id=%s player_id=%s", roomID, playerID)
 
 	events, cancel := s.events.Subscribe(roomID)
-	defer cancel()
+	defer func() {
+		cancel()
+		log.Printf("sse_disconnected room_id=%s player_id=%s", roomID, playerID)
+	}()
 
 	ctx := r.Context()
 	for {
@@ -57,6 +63,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, roomID str
 			}
 			playerState, err := s.gameService.GetPlayerState(context.Background(), roomID, playerID)
 			if err != nil {
+				log.Printf("sse_player_state_error room_id=%s player_id=%s event=%s err=%v", roomID, playerID, event.Type, err)
 				continue
 			}
 			writeSSEEvent(w, usecase.PlayerRoomEvent{
@@ -64,6 +71,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, roomID str
 				State: playerState,
 			})
 			flusher.Flush()
+			log.Printf("sse_event_sent room_id=%s player_id=%s event=%s week=%d", roomID, playerID, event.Type, playerState.CurrentWeek)
 		}
 	}
 }

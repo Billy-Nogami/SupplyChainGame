@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
 
 	"supply-chain-simulator/internal/domain"
 )
@@ -91,6 +92,7 @@ func (s *GameService) StartGame(ctx context.Context, roomID, scenarioID string) 
 		return domain.GameSession{}, err
 	}
 	s.publishRoomEvent(ctx, "game.started", room, session, nil)
+	log.Printf("game_started room_id=%s session_id=%s scenario_id=%s max_weeks=%d", room.ID, session.ID, scenario.ID, session.MaxWeeks)
 
 	return session, nil
 }
@@ -139,6 +141,17 @@ func (s *GameService) SubmitOrder(ctx context.Context, roomID, playerID string, 
 
 	snapshot := decisions.Snapshot()
 	s.publishRoomEvent(ctx, "game.order_submitted", room, session, &snapshot)
+	log.Printf(
+		"game_order_submitted room_id=%s session_id=%s player_id=%s role=%s week=%d order=%d submitted=%d expected=%d",
+		room.ID,
+		session.ID,
+		playerID,
+		role,
+		week,
+		order,
+		len(snapshot.SubmittedRoles),
+		len(domain.AllRoles),
+	)
 
 	return snapshot, nil
 }
@@ -185,6 +198,15 @@ func (s *GameService) AdvanceWeek(ctx context.Context, roomID string) (domain.We
 		return domain.WeekState{}, err
 	}
 	s.publishRoomEvent(ctx, "game.week_advanced", room, session, nil)
+	log.Printf(
+		"game_week_advanced room_id=%s session_id=%s completed_week=%d next_week=%d status=%s total_cost=%d",
+		room.ID,
+		session.ID,
+		weekState.Week,
+		currentPlayableWeek(session),
+		session.Status,
+		weekState.TotalCost,
+	)
 
 	return weekState, nil
 }
@@ -225,6 +247,7 @@ func (s *GameService) ExportSession(ctx context.Context, roomID string) (Exporte
 	}
 
 	analytics := domain.CalculateSessionAnalytics(session)
+	log.Printf("game_export_requested room_id=%s session_id=%s weeks=%d total_cost=%d", roomID, session.ID, analytics.TotalWeeks, analytics.TotalCost)
 
 	return s.exporter.ExportSession(ctx, session, analytics)
 }

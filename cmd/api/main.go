@@ -31,7 +31,11 @@ func main() {
 	roomService := usecase.NewRoomService(roomStore, idGenerator, clock, eventPublisher)
 	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, eventPublisher, idGenerator, clock)
 	server := httptransport.NewServer(roomService, gameService, eventSubscriber)
-	handler := httptransport.WithCORS(server.Handler(), cfg.AllowedOrigins)
+	handler := httptransport.WithRecovery(
+		httptransport.WithRequestLogging(
+			httptransport.WithCORS(server.Handler(), cfg.AllowedOrigins),
+		),
+	)
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -40,7 +44,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("api listening on %s", httpServer.Addr)
+		log.Printf("api_listening addr=%s redis_enabled=%t cors_origins=%d", httpServer.Addr, cfg.Redis.Enabled, len(cfg.AllowedOrigins))
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}
@@ -67,6 +71,7 @@ func buildInfrastructure(cfg config.App) (
 	func(),
 ) {
 	if cfg.Redis.Enabled {
+		log.Printf("storage_mode=redis addr=%s db=%d ttl=%s", cfg.Redis.Addr, cfg.Redis.DB, cfg.Redis.KeyTTL)
 		client := redisinfra.NewClient(redisinfra.Config{
 			Addr:     cfg.Redis.Addr,
 			Password: cfg.Redis.Password,
@@ -86,6 +91,7 @@ func buildInfrastructure(cfg config.App) (
 		}
 	}
 
+	log.Printf("storage_mode=memory")
 	roomStore := memory.NewRoomStore()
 	sessionStore := memory.NewSessionStore()
 	decisionStore := memory.NewDecisionStore()

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"log"
 
 	"supply-chain-simulator/internal/domain"
 )
@@ -46,6 +47,7 @@ func (s *RoomService) CreateRoom(ctx context.Context, maxWeeks int) (domain.Room
 		OccurredAt: room.UpdatedAt,
 		Room:       &room,
 	})
+	log.Printf("room_created room_id=%s max_weeks=%d", room.ID, room.MaxWeeks)
 
 	return room, nil
 }
@@ -81,6 +83,7 @@ func (s *RoomService) JoinRoom(ctx context.Context, roomID, playerName string) (
 		OccurredAt: room.UpdatedAt,
 		Room:       &room,
 	})
+	log.Printf("room_player_joined room_id=%s player_id=%s player_name=%q players=%d", room.ID, playerID, playerName, len(room.Players))
 
 	return room, nil
 }
@@ -104,6 +107,7 @@ func (s *RoomService) AssignRole(ctx context.Context, roomID, playerID string, r
 		OccurredAt: room.UpdatedAt,
 		Room:       &room,
 	})
+	log.Printf("room_role_assigned room_id=%s player_id=%s role=%s", room.ID, playerID, role)
 
 	return room, nil
 }
