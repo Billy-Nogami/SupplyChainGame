@@ -12,6 +12,7 @@ import (
 	"supply-chain-simulator/internal/infrastructure/config"
 	"supply-chain-simulator/internal/infrastructure/export"
 	"supply-chain-simulator/internal/infrastructure/memory"
+	redisinfra "supply-chain-simulator/internal/infrastructure/redis"
 	"supply-chain-simulator/internal/infrastructure/system"
 	httptransport "supply-chain-simulator/internal/interface/http"
 	"supply-chain-simulator/internal/usecase"
@@ -19,18 +20,17 @@ import (
 
 func main() {
 	cfg := config.Load()
-	roomStore := memory.NewRoomStore()
-	sessionStore := memory.NewSessionStore()
-	decisionStore := memory.NewDecisionStore()
-	eventBus := memory.NewRoomEventBus()
 	scenarioRepo := memory.NewScenarioRepository()
 	exporter := export.NewXLSXExporter()
 	idGenerator := system.NewIDGenerator()
 	clock := system.SystemClock{}
 
-	roomService := usecase.NewRoomService(roomStore, idGenerator, clock, eventBus)
-	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, eventBus, idGenerator, clock)
-	server := httptransport.NewServer(roomService, gameService, eventBus)
+	roomStore, sessionStore, decisionStore, eventPublisher, eventSubscriber, closeInfra := buildInfrastructure(cfg)
+	defer closeInfra()
+
+	roomService := usecase.NewRoomService(roomStore, idGenerator, clock, eventPublisher)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, eventPublisher, idGenerator, clock)
+	server := httptransport.NewServer(roomService, gameService, eventSubscriber)
 	handler := httptransport.WithCORS(server.Handler(), cfg.AllowedOrigins)
 
 	httpServer := &http.Server{
@@ -56,4 +56,40 @@ func main() {
 	if err := httpServer.Shutdown(ctx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+}
+
+func buildInfrastructure(cfg config.App) (
+	usecase.RoomStore,
+	usecase.SessionStore,
+	usecase.DecisionStore,
+	usecase.RoomEventPublisher,
+	httptransport.RoomEventSubscriber,
+	func(),
+) {
+	if cfg.Redis.Enabled {
+		client := redisinfra.NewClient(redisinfra.Config{
+			Addr:     cfg.Redis.Addr,
+			Password: cfg.Redis.Password,
+			DB:       cfg.Redis.DB,
+		})
+		if err := redisinfra.Ping(context.Background(), client); err != nil {
+			log.Fatalf("redis ping failed: %v", err)
+		}
+
+		roomStore := redisinfra.NewRoomStore(client, cfg.Redis.KeyTTL)
+		sessionStore := redisinfra.NewSessionStore(client, cfg.Redis.KeyTTL)
+		decisionStore := redisinfra.NewDecisionStore(client, cfg.Redis.KeyTTL)
+		eventBus := redisinfra.NewRoomEventBus(client)
+
+		return roomStore, sessionStore, decisionStore, eventBus, eventBus, func() {
+			_ = client.Close()
+		}
+	}
+
+	roomStore := memory.NewRoomStore()
+	sessionStore := memory.NewSessionStore()
+	decisionStore := memory.NewDecisionStore()
+	eventBus := memory.NewRoomEventBus()
+
+	return roomStore, sessionStore, decisionStore, eventBus, eventBus, func() {}
 }
