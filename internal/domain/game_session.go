@@ -20,19 +20,19 @@ var (
 )
 
 type GameSession struct {
-	ID              string
-	RoomID          string
-	Status          GameStatus
-	CurrentWeek     int
-	MaxWeeks        int
-	Scenario        Scenario
-	Nodes           []NodeState
-	GoodsPipelines  map[Role][]int
-	OrderPipelines  map[Role][]int
-	ProductionQueue []int
-	History         []WeekState
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string         `json:"id"`
+	RoomID          string         `json:"room_id"`
+	Status          GameStatus     `json:"status"`
+	CurrentWeek     int            `json:"current_week"`
+	MaxWeeks        int            `json:"max_weeks"`
+	Scenario        Scenario       `json:"scenario"`
+	Nodes           []NodeState    `json:"nodes"`
+	GoodsPipelines  map[Role][]int `json:"goods_pipelines"`
+	OrderPipelines  map[Role][]int `json:"order_pipelines"`
+	ProductionQueue []int          `json:"production_queue"`
+	History         []WeekState    `json:"history"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 func NewGameSession(id, roomID string, scenario Scenario, maxWeeks int, now time.Time) (GameSession, error) {

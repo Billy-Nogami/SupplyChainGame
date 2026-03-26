@@ -45,22 +45,22 @@ var (
 )
 
 type Player struct {
-	ID        string
-	Name      string
-	Role      Role
-	Connected bool
-	JoinedAt  time.Time
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Role      Role      `json:"role"`
+	Connected bool      `json:"connected"`
+	JoinedAt  time.Time `json:"joined_at"`
 }
 
 type Room struct {
-	ID          string
-	Status      GameStatus
-	CurrentWeek int
-	MaxWeeks    int
-	Players     []Player
-	ScenarioID  string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string     `json:"id"`
+	Status      GameStatus `json:"status"`
+	CurrentWeek int        `json:"current_week"`
+	MaxWeeks    int        `json:"max_weeks"`
+	Players     []Player   `json:"players"`
+	ScenarioID  string     `json:"scenario_id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 func NewRoom(id string, maxWeeks int, now time.Time) (Room, error) {

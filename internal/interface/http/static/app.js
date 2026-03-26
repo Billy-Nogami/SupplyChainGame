@@ -145,6 +145,7 @@ function bindForms() {
     if (!state.roomId) return;
     try {
       await api(`/rooms/${state.roomId}/start`, { method: "POST", body: "{}" });
+      await refreshState();
       pushActivity("Игра началась", "Комната перешла в игровой режим.");
     } catch (error) {
       notifyError(error);
@@ -163,6 +164,7 @@ function bindForms() {
           order: Number(elements.orderInput.value),
         }),
       });
+      await refreshState();
       pushActivity("Заказ отправлен", `Вы отправили заказ на ${Number(elements.orderInput.value)} ед.`);
     } catch (error) {
       notifyError(error);
@@ -173,6 +175,7 @@ function bindForms() {
     if (!state.roomId) return;
     try {
       await api(`/rooms/${state.roomId}/next`, { method: "POST" });
+      await refreshState();
       pushActivity("Неделя завершена", "Система рассчитала новый игровой шаг.");
     } catch (error) {
       notifyError(error);
@@ -221,6 +224,7 @@ function renderRoleButtons() {
           method: "POST",
           body: JSON.stringify({ player_id: state.playerId, role }),
         });
+        await refreshState();
         pushActivity("Роль выбрана", `За вами закреплена роль ${role}.`);
       } catch (error) {
         notifyError(error);

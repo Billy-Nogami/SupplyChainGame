@@ -3,17 +3,17 @@ package domain
 import "fmt"
 
 type Scenario struct {
-	ID                    string
-	InitialInventory      int
-	InitialBacklog        int
-	InitialPipelineGoods  []int
-	InitialPipelineOrders []int
-	ConsumerDemand        []int
-	ShippingDelay         int
-	OrderDelay            int
-	ProductionDelay       int
-	HoldingCost           int
-	BacklogCost           int
+	ID                    string `json:"id"`
+	InitialInventory      int    `json:"initial_inventory"`
+	InitialBacklog        int    `json:"initial_backlog"`
+	InitialPipelineGoods  []int  `json:"initial_pipeline_goods"`
+	InitialPipelineOrders []int  `json:"initial_pipeline_orders"`
+	ConsumerDemand        []int  `json:"consumer_demand"`
+	ShippingDelay         int    `json:"shipping_delay"`
+	OrderDelay            int    `json:"order_delay"`
+	ProductionDelay       int    `json:"production_delay"`
+	HoldingCost           int    `json:"holding_cost"`
+	BacklogCost           int    `json:"backlog_cost"`
 }
 
 func (s Scenario) Validate() error {
