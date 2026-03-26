@@ -5,6 +5,8 @@ const state = {
   eventSource: null,
   current: null,
   activity: [],
+  tabId: createTabId(),
+  lockHeartbeat: null,
 };
 
 const elements = {
@@ -61,12 +63,17 @@ const elements = {
 
 const roles = ["factory", "distributor", "wholesaler", "retailer"];
 const maxActivityItems = 12;
+const sessionStorageKey = "supply-chain-player-session";
+const playerLockPrefix = "supply-chain-player-lock";
+const playerLockTTL = 15000;
+const playerLockRefreshInterval = 5000;
 
 boot();
 
 function boot() {
   renderRoleButtons();
   bindForms();
+  bindWindowEvents();
   hydrateInviteFromUrl();
   restoreSession();
 }
@@ -125,8 +132,13 @@ function bindForms() {
       const url = new URL(window.location.href);
       url.pathname = "/app";
       url.search = `room=${encodeURIComponent(state.roomId)}`;
-      await navigator.clipboard.writeText(url.toString());
-      setNotice("Ссылка скопирована", "Теперь можно отправить ссылку другим участникам комнаты.");
+      const copied = await copyText(url.toString());
+      if (copied) {
+        setNotice("Ссылка скопирована", "Теперь можно отправить ссылку другим участникам комнаты.");
+      } else {
+        window.prompt("Скопируйте ссылку на комнату", url.toString());
+        setNotice("Ссылка подготовлена", "Браузер не дал скопировать автоматически, поэтому ссылка показана вручную.");
+      }
     } catch (error) {
       notifyError(error);
     }
@@ -134,6 +146,8 @@ function bindForms() {
 
   elements.leaveRoomButton.addEventListener("click", () => {
     disconnectEvents();
+    releasePlayerLock();
+    stopLockHeartbeat();
     clearSession();
     state.current = null;
     state.activity = [];
@@ -205,6 +219,8 @@ async function joinRoom(roomId, playerName) {
     playerName: currentPlayer.name,
   });
 
+  ensurePlayerLock();
+  startLockHeartbeat();
   await refreshState();
   connectEvents();
 }
@@ -242,6 +258,7 @@ async function refreshState() {
 
 function connectEvents() {
   if (!state.roomId || !state.playerId) return;
+  ensurePlayerLock();
   disconnectEvents();
 
   const url = `/rooms/${state.roomId}/events?player_id=${encodeURIComponent(state.playerId)}`;
@@ -612,6 +629,10 @@ async function api(path, options = {}) {
 }
 
 function applySession(session) {
+  if (state.roomId && state.playerId && (state.roomId !== session.roomId || state.playerId !== session.playerId)) {
+    releasePlayerLock();
+    stopLockHeartbeat();
+  }
   state.roomId = session.roomId;
   state.playerId = session.playerId;
   state.playerName = session.playerName;
@@ -619,7 +640,7 @@ function applySession(session) {
 }
 
 function persistSession() {
-  localStorage.setItem("supply-chain-player", JSON.stringify({
+  sessionStorage.setItem(sessionStorageKey, JSON.stringify({
     roomId: state.roomId,
     playerId: state.playerId,
     playerName: state.playerName,
@@ -628,14 +649,14 @@ function persistSession() {
 
 function loadSavedSession() {
   try {
-    return JSON.parse(localStorage.getItem("supply-chain-player"));
+    return JSON.parse(sessionStorage.getItem(sessionStorageKey));
   } catch (_error) {
     return null;
   }
 }
 
 function clearSession() {
-  localStorage.removeItem("supply-chain-player");
+  sessionStorage.removeItem(sessionStorageKey);
   state.roomId = null;
   state.playerId = null;
   state.playerName = null;
@@ -643,16 +664,9 @@ function clearSession() {
 }
 
 function restoreSession() {
-  const params = new URLSearchParams(window.location.search);
   const saved = loadSavedSession();
 
-  if (params.get("room") && params.get("player")) {
-    applySession({
-      roomId: params.get("room"),
-      playerId: params.get("player"),
-      playerName: params.get("name") || saved?.playerName || "",
-    });
-  } else if (saved) {
+  if (saved) {
     applySession(saved);
   } else {
     render();
@@ -661,12 +675,15 @@ function restoreSession() {
 
   refreshState()
     .then(() => {
+      ensurePlayerLock();
+      startLockHeartbeat();
       connectEvents();
       pushActivity("Комната восстановлена", "Подписка на события комнаты активна.");
     })
     .catch((error) => {
       notifyError(error);
       disconnectEvents();
+      clearSession();
     });
 }
 
@@ -680,13 +697,9 @@ function hydrateInviteFromUrl() {
 }
 
 function updateUrlState() {
-  if (!state.roomId || !state.playerId) return;
+  if (!state.roomId) return;
   const params = new URLSearchParams(window.location.search);
   params.set("room", state.roomId);
-  params.set("player", state.playerId);
-  if (state.playerName) {
-    params.set("name", state.playerName);
-  }
   history.replaceState({}, "", `/app?${params.toString()}`);
 }
 
@@ -709,4 +722,107 @@ function escapeHTML(value) {
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function bindWindowEvents() {
+  window.addEventListener("beforeunload", () => {
+    releasePlayerLock();
+    stopLockHeartbeat();
+  });
+}
+
+function createTabId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getPlayerLockKey(roomId = state.roomId, playerId = state.playerId) {
+  if (!roomId || !playerId) return null;
+  return `${playerLockPrefix}:${roomId}:${playerId}`;
+}
+
+function ensurePlayerLock() {
+  const key = getPlayerLockKey();
+  if (!key) return;
+
+  const now = Date.now();
+  const currentLock = readJSON(localStorage.getItem(key));
+  if (currentLock && currentLock.tabId !== state.tabId && currentLock.expiresAt > now) {
+    throw new Error("Этот игрок уже открыт в другой вкладке. Для второго игрока открой новую вкладку и войди под другим именем.");
+  }
+
+  localStorage.setItem(key, JSON.stringify({
+    tabId: state.tabId,
+    expiresAt: now + playerLockTTL,
+  }));
+}
+
+function releasePlayerLock() {
+  const key = getPlayerLockKey();
+  if (!key) return;
+
+  const currentLock = readJSON(localStorage.getItem(key));
+  if (!currentLock || currentLock.tabId === state.tabId) {
+    localStorage.removeItem(key);
+  }
+}
+
+function startLockHeartbeat() {
+  stopLockHeartbeat();
+  if (!state.roomId || !state.playerId) return;
+
+  ensurePlayerLock();
+  state.lockHeartbeat = window.setInterval(() => {
+    try {
+      ensurePlayerLock();
+    } catch (error) {
+      stopLockHeartbeat();
+      disconnectEvents();
+      clearSession();
+      state.current = null;
+      render();
+      notifyError(error);
+    }
+  }, playerLockRefreshInterval);
+}
+
+function stopLockHeartbeat() {
+  if (state.lockHeartbeat) {
+    window.clearInterval(state.lockHeartbeat);
+    state.lockHeartbeat = null;
+  }
+}
+
+function readJSON(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function copyText(value) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
