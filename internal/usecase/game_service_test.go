@@ -155,6 +155,30 @@ func TestGetAnalyticsReturnsCalculatedMetrics(t *testing.T) {
 	}
 }
 
+func TestExportSessionReturnsFile(t *testing.T) {
+	gameService, _, room := newStartedGameServices(t)
+
+	for _, player := range room.Players {
+		if _, err := gameService.SubmitOrder(context.Background(), room.ID, player.ID, 4); err != nil {
+			t.Fatalf("SubmitOrder() error = %v", err)
+		}
+	}
+	if _, err := gameService.AdvanceWeek(context.Background(), room.ID); err != nil {
+		t.Fatalf("AdvanceWeek() error = %v", err)
+	}
+
+	exportedFile, err := gameService.ExportSession(context.Background(), room.ID)
+	if err != nil {
+		t.Fatalf("ExportSession() error = %v", err)
+	}
+	if exportedFile.FileName == "" {
+		t.Fatal("exported file name is empty")
+	}
+	if len(exportedFile.Content) == 0 {
+		t.Fatal("exported content is empty")
+	}
+}
+
 func newStartedGameServices(t *testing.T) (*usecase.GameService, *usecase.RoomService, domain.Room) {
 	t.Helper()
 
@@ -164,6 +188,7 @@ func newStartedGameServices(t *testing.T) (*usecase.GameService, *usecase.RoomSe
 	scenarioRepo := memory.NewScenarioRepository()
 	idGenerator := &stubIDGenerator{ids: []string{"room-1", "player-1", "player-2", "player-3", "player-4", "session-1"}}
 	clock := stubClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}
+	exporter := stubExporter{}
 
 	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
 	room, err := roomService.CreateRoom(context.Background(), 30)
@@ -184,7 +209,7 @@ func newStartedGameServices(t *testing.T) (*usecase.GameService, *usecase.RoomSe
 		}
 	}
 
-	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, idGenerator, clock)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, idGenerator, clock)
 	if _, err := gameService.StartGame(context.Background(), room.ID, ""); err != nil {
 		t.Fatalf("StartGame() error = %v", err)
 	}
@@ -214,4 +239,14 @@ type stubClock struct {
 
 func (s stubClock) Now() time.Time {
 	return s.now
+}
+
+type stubExporter struct{}
+
+func (stubExporter) ExportSession(_ context.Context, session domain.GameSession, _ domain.SessionAnalytics) (usecase.ExportedFile, error) {
+	return usecase.ExportedFile{
+		FileName:    "session_" + session.ID + ".xlsx",
+		ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		Content:     []byte("stub"),
+	}, nil
 }

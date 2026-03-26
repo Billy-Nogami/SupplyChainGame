@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"supply-chain-simulator/internal/domain"
@@ -26,6 +27,7 @@ type GameService interface {
 	GetWeeks(ctx context.Context, roomID string) ([]domain.WeekState, error)
 	GetAnalytics(ctx context.Context, roomID string) (domain.SessionAnalytics, error)
 	GetPendingDecisions(ctx context.Context, roomID string) (usecase.WeeklyDecisionsSnapshot, error)
+	ExportSession(ctx context.Context, roomID string) (usecase.ExportedFile, error)
 }
 
 type Server struct {
@@ -145,6 +147,13 @@ func (s *Server) handleGetRoomResource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, decisions)
+	case "export":
+		exportedFile, err := s.gameService.ExportSession(r.Context(), roomID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeFile(w, http.StatusOK, exportedFile)
 	default:
 		http.NotFound(w, r)
 	}
@@ -301,4 +310,12 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func writeFile(w http.ResponseWriter, status int, file usecase.ExportedFile) {
+	w.Header().Set("Content-Type", file.ContentType)
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+file.FileName+"\"")
+	w.Header().Set("Content-Length", strconv.Itoa(len(file.Content)))
+	w.WriteHeader(status)
+	_, _ = w.Write(file.Content)
 }

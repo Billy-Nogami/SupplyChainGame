@@ -23,6 +23,7 @@ type GameService struct {
 	sessionStore  SessionStore
 	decisionStore DecisionStore
 	scenarios     ScenarioRepository
+	exporter      SessionExporter
 	idGenerator   IDGenerator
 	clock         Clock
 }
@@ -32,6 +33,7 @@ func NewGameService(
 	sessionStore SessionStore,
 	decisionStore DecisionStore,
 	scenarios ScenarioRepository,
+	exporter SessionExporter,
 	idGenerator IDGenerator,
 	clock Clock,
 ) *GameService {
@@ -40,6 +42,7 @@ func NewGameService(
 		sessionStore:  sessionStore,
 		decisionStore: decisionStore,
 		scenarios:     scenarios,
+		exporter:      exporter,
 		idGenerator:   idGenerator,
 		clock:         clock,
 	}
@@ -201,6 +204,17 @@ func (s *GameService) GetAnalytics(ctx context.Context, roomID string) (domain.S
 	}
 
 	return domain.CalculateSessionAnalytics(session), nil
+}
+
+func (s *GameService) ExportSession(ctx context.Context, roomID string) (ExportedFile, error) {
+	session, err := s.sessionStore.GetByRoomID(ctx, roomID)
+	if err != nil {
+		return ExportedFile{}, err
+	}
+
+	analytics := domain.CalculateSessionAnalytics(session)
+
+	return s.exporter.ExportSession(ctx, session, analytics)
 }
 
 func (s *GameService) GetPendingDecisions(ctx context.Context, roomID string) (WeeklyDecisionsSnapshot, error) {

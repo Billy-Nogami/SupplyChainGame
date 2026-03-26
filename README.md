@@ -38,11 +38,39 @@
 - `GET /rooms/{roomId}/weeks`
 - `GET /rooms/{roomId}/analytics`
 - `GET /rooms/{roomId}/decisions`
+- `GET /rooms/{roomId}/export`
+
+## Запуск
+
+Локально:
+
+```bash
+go run ./cmd/api
+```
+
+Через Docker:
+
+```bash
+docker compose up --build
+```
+
+Сервис слушает порт `8080` по умолчанию. Его можно переопределить через переменную окружения `PORT`.
+
+Для frontend-деплоя можно задать `ALLOWED_ORIGINS`, например:
+
+```bash
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+Также в проекте есть:
+
+- [`.env.example`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/.env.example)
+- [`Makefile`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/Makefile)
 
 ## Следующие шаги
 
 - real-time обновления комнаты через `WebSocket` или `SSE`;
 - перенос активных сессий и ходов в `Redis`;
 - архивирование завершенных игр в `PostgreSQL`;
-- экспорт истории сессии в `Excel`;
+- frontend для комнат и дашборда;
 - simulation mode и Monte Carlo.

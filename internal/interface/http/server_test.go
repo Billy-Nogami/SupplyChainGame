@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"supply-chain-simulator/internal/domain"
+	infraexport "supply-chain-simulator/internal/infrastructure/export"
 	"supply-chain-simulator/internal/infrastructure/memory"
 	"supply-chain-simulator/internal/usecase"
 )
@@ -55,9 +56,36 @@ func TestServerRoomGameplayFlow(t *testing.T) {
 		t.Fatalf("analytics total cost = %d, want 48", analytics.TotalCost)
 	}
 
+	exported := exportSession(t, server, room.ID)
+	if len(exported) == 0 {
+		t.Fatal("exported file is empty")
+	}
+	if string(exported[:2]) != "PK" {
+		t.Fatalf("export prefix = %q, want zip header PK", string(exported[:2]))
+	}
+
 	decisions := getDecisions(t, server, room.ID)
 	if decisions.Week != 2 {
 		t.Fatalf("decisions week = %d, want 2", decisions.Week)
+	}
+}
+
+func TestWithCORSPrefight(t *testing.T) {
+	handler := WithCORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), []string{"http://localhost:3000"})
+
+	req := httptest.NewRequest(http.MethodOptions, "/rooms", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
+		t.Fatalf("allow origin = %q, want %q", rec.Header().Get("Access-Control-Allow-Origin"), "http://localhost:3000")
 	}
 }
 
@@ -68,9 +96,10 @@ func newTestServer() *Server {
 	scenarioRepo := memory.NewScenarioRepository()
 	idGenerator := &stubIDGenerator{ids: []string{"room-1", "player-1", "player-2", "player-3", "player-4", "session-1"}}
 	clock := stubClock{now: time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)}
+	exporter := infraexport.NewXLSXExporter()
 
 	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
-	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, idGenerator, clock)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, idGenerator, clock)
 
 	return NewServer(roomService, gameService)
 }
@@ -251,6 +280,20 @@ func getAnalytics(t *testing.T, server *Server, roomID string) domain.SessionAna
 	}
 
 	return analytics
+}
+
+func exportSession(t *testing.T, server *Server, roomID string) []byte {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/rooms/"+roomID+"/export", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("export status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	return rec.Body.Bytes()
 }
 
 type stubIDGenerator struct {

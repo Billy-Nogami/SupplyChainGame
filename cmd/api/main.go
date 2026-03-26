@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"supply-chain-simulator/internal/infrastructure/config"
+	"supply-chain-simulator/internal/infrastructure/export"
 	"supply-chain-simulator/internal/infrastructure/memory"
 	"supply-chain-simulator/internal/infrastructure/system"
 	httptransport "supply-chain-simulator/internal/interface/http"
@@ -16,20 +18,23 @@ import (
 )
 
 func main() {
+	cfg := config.Load()
 	roomStore := memory.NewRoomStore()
 	sessionStore := memory.NewSessionStore()
 	decisionStore := memory.NewDecisionStore()
 	scenarioRepo := memory.NewScenarioRepository()
+	exporter := export.NewXLSXExporter()
 	idGenerator := system.NewIDGenerator()
 	clock := system.SystemClock{}
 
 	roomService := usecase.NewRoomService(roomStore, idGenerator, clock)
-	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, idGenerator, clock)
+	gameService := usecase.NewGameService(roomStore, sessionStore, decisionStore, scenarioRepo, exporter, idGenerator, clock)
 	server := httptransport.NewServer(roomService, gameService)
+	handler := httptransport.WithCORS(server.Handler(), cfg.AllowedOrigins)
 
 	httpServer := &http.Server{
-		Addr:              ":8080",
-		Handler:           server.Handler(),
+		Addr:              cfg.HTTPAddr,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
