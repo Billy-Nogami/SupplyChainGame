@@ -122,6 +122,51 @@ func TestAdvanceWeekFinishesSessionAtMaxWeeks(t *testing.T) {
 	}
 }
 
+func TestScenarioMaterializeDemandGeneratesRandomBlocks(t *testing.T) {
+	scenario := Scenario{
+		ID:                    "scenario-random",
+		InitialInventory:      12,
+		InitialBacklog:        0,
+		InitialPipelineGoods:  []int{4, 4},
+		InitialPipelineOrders: []int{4},
+		ShippingDelay:         2,
+		OrderDelay:            1,
+		ProductionDelay:       2,
+		HoldingCost:           1,
+		BacklogCost:           2,
+		DemandMode:            DemandModeRandomBlocks,
+		DemandMin:             8,
+		DemandMax:             20,
+		DemandChangePeriod:    5,
+	}
+
+	materialized, err := scenario.MaterializeDemand(15, 42)
+	if err != nil {
+		t.Fatalf("MaterializeDemand() error = %v", err)
+	}
+
+	if len(materialized.ConsumerDemand) != 15 {
+		t.Fatalf("consumer demand length = %d, want 15", len(materialized.ConsumerDemand))
+	}
+
+	for blockStart := 0; blockStart < 15; blockStart += 5 {
+		blockValue := materialized.ConsumerDemand[blockStart]
+		if blockValue < 8 || blockValue > 20 {
+			t.Fatalf("block value = %d, want in [8, 20]", blockValue)
+		}
+
+		blockEnd := blockStart + 5
+		if blockEnd > 15 {
+			blockEnd = 15
+		}
+		for i := blockStart; i < blockEnd; i++ {
+			if materialized.ConsumerDemand[i] != blockValue {
+				t.Fatalf("consumer demand[%d] = %d, want %d", i, materialized.ConsumerDemand[i], blockValue)
+			}
+		}
+	}
+}
+
 func testScenario() Scenario {
 	return Scenario{
 		ID:                    "scenario-1",

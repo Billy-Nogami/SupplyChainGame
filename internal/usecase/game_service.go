@@ -68,6 +68,10 @@ func (s *GameService) StartGame(ctx context.Context, roomID, scenarioID string) 
 	}
 
 	now := s.clock.Now()
+	scenario, err = scenario.MaterializeDemand(room.MaxWeeks, now.UnixNano())
+	if err != nil {
+		return domain.GameSession{}, err
+	}
 	if err := room.Start(now); err != nil {
 		return domain.GameSession{}, err
 	}

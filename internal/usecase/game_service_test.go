@@ -39,6 +39,25 @@ func TestStartGameCreatesSessionAndAssignsRoles(t *testing.T) {
 	if updatedRoom.CurrentWeek != 1 {
 		t.Fatalf("room current week = %d, want 1", updatedRoom.CurrentWeek)
 	}
+	if len(session.Scenario.ConsumerDemand) != updatedRoom.MaxWeeks {
+		t.Fatalf("scenario consumer demand length = %d, want %d", len(session.Scenario.ConsumerDemand), updatedRoom.MaxWeeks)
+	}
+	for blockStart := 0; blockStart < len(session.Scenario.ConsumerDemand); blockStart += 5 {
+		blockValue := session.Scenario.ConsumerDemand[blockStart]
+		if blockValue < 8 || blockValue > 20 {
+			t.Fatalf("block demand = %d, want in [8,20]", blockValue)
+		}
+
+		blockEnd := blockStart + 5
+		if blockEnd > len(session.Scenario.ConsumerDemand) {
+			blockEnd = len(session.Scenario.ConsumerDemand)
+		}
+		for i := blockStart; i < blockEnd; i++ {
+			if session.Scenario.ConsumerDemand[i] != blockValue {
+				t.Fatalf("consumer_demand[%d] = %d, want %d", i, session.Scenario.ConsumerDemand[i], blockValue)
+			}
+		}
+	}
 }
 
 func TestSubmitOrderAndAdvanceWeek(t *testing.T) {
@@ -147,8 +166,8 @@ func TestGetAnalyticsReturnsCalculatedMetrics(t *testing.T) {
 	if analytics.TotalWeeks != 1 {
 		t.Fatalf("analytics total weeks = %d, want 1", analytics.TotalWeeks)
 	}
-	if analytics.TotalCost != 48 {
-		t.Fatalf("analytics total cost = %d, want 48", analytics.TotalCost)
+	if analytics.TotalCost <= 0 {
+		t.Fatalf("analytics total cost = %d, want > 0", analytics.TotalCost)
 	}
 	if len(analytics.NodeAnalytics) != len(domain.AllRoles) {
 		t.Fatalf("node analytics length = %d, want %d", len(analytics.NodeAnalytics), len(domain.AllRoles))

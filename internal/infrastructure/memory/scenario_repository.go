@@ -18,12 +18,15 @@ func NewScenarioRepository() *ScenarioRepository {
 		InitialBacklog:        0,
 		InitialPipelineGoods:  []int{4, 4},
 		InitialPipelineOrders: []int{4},
-		ConsumerDemand:        []int{4, 4, 4, 4, 8, 8, 8, 8},
 		ShippingDelay:         2,
 		OrderDelay:            1,
 		ProductionDelay:       2,
 		HoldingCost:           1,
 		BacklogCost:           2,
+		DemandMode:            domain.DemandModeRandomBlocks,
+		DemandMin:             8,
+		DemandMax:             20,
+		DemandChangePeriod:    5,
 	}
 
 	return &ScenarioRepository{
