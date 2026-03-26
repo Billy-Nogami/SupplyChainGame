@@ -84,6 +84,24 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 - [`.env.example`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/.env.example)
 - [`Makefile`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/Makefile)
 
+## Deploy
+
+Базовый production-like запуск можно делать через `docker compose` на VPS:
+
+```bash
+git clone https://github.com/Billy-Nogami/SupplyChainGame.git
+cd SupplyChainGame
+cp .env.example .env
+docker compose up -d --build
+```
+
+В `docker-compose.yml` уже включены:
+
+- `restart: unless-stopped` для `api` и `redis`;
+- `Redis AOF` (`appendonly yes`, `appendfsync everysec`);
+- volume `redis-data` для восстановления активных игр после рестарта;
+- отсутствие внешнего порта у `Redis`, чтобы он не был открыт наружу.
+
 ## Логи
 
 Приложение пишет:
