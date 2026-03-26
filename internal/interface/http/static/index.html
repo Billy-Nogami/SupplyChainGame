@@ -19,6 +19,17 @@
         <div class="hero-badge" id="connectionBadge">offline</div>
       </header>
 
+      <section class="notice-bar" id="noticeBar">
+        <div>
+          <strong id="noticeTitle">Готово к подключению</strong>
+          <p id="noticeText">Создайте комнату или подключитесь по ID, чтобы начать игру.</p>
+        </div>
+        <div class="notice-actions">
+          <button id="copyInviteButton" class="button ghost" type="button">Скопировать ссылку</button>
+          <button id="leaveRoomButton" class="button ghost" type="button">Выйти из комнаты</button>
+        </div>
+      </section>
+
       <main class="layout">
         <section class="card card-auth">
           <h2>Вход в комнату</h2>
@@ -58,7 +69,10 @@
               <p class="eyebrow">Комната</p>
               <h2 id="roomTitle">Нет активной комнаты</h2>
             </div>
-            <div class="room-chip" id="roomStatus">waiting</div>
+            <div class="room-head-actions">
+              <div class="room-chip" id="roomStatus">waiting</div>
+              <div class="room-code" id="roomCode">-</div>
+            </div>
           </div>
 
           <div class="room-meta">
@@ -74,6 +88,10 @@
               <span class="meta-label">Неделя</span>
               <strong id="currentWeek">-</strong>
             </div>
+            <div>
+              <span class="meta-label">Готовность недели</span>
+              <strong id="weekProgress">-</strong>
+            </div>
           </div>
 
           <div class="grid-two">
@@ -81,8 +99,9 @@
               <h3>Игроки комнаты</h3>
               <div id="playersList" class="players-list"></div>
             </div>
-            <div class="panel">
+            <div class="panel" id="lobbyPanel">
               <h3>Выбор роли</h3>
+              <p class="hint" id="roleHint">Выберите роль, чтобы закрепить звено за собой.</p>
               <div id="roleButtons" class="role-grid"></div>
               <button id="startGameButton" class="button primary wide" type="button">Запустить игру</button>
             </div>
@@ -96,6 +115,24 @@
               <h2 id="gameTitle">Данные игрока</h2>
             </div>
             <div class="room-chip accent" id="weekReadyChip">ожидание ходов</div>
+          </div>
+
+          <div class="phase-grid">
+            <div class="phase-card" id="phaseCard">
+              <span class="meta-label">Текущая фаза</span>
+              <strong id="phaseTitle">Ожидание</strong>
+              <p id="phaseText">Подключитесь к комнате и выберите роль.</p>
+            </div>
+            <div class="phase-card">
+              <span class="meta-label">Ваш текущий заказ</span>
+              <strong id="currentOrderValue">-</strong>
+              <p id="currentOrderText">Заказ ещё не отправлен.</p>
+            </div>
+            <div class="phase-card">
+              <span class="meta-label">Системный статус</span>
+              <strong id="systemStatusValue">-</strong>
+              <p id="systemStatusText">После запуска игры данные будут приходить по SSE.</p>
+            </div>
           </div>
 
           <div class="metrics-grid" id="metricsGrid">
@@ -128,6 +165,37 @@
                 <div><span>Суммарные заказы</span><strong id="analyticsOrders">-</strong></div>
                 <div><span>Общие затраты системы</span><strong id="analyticsSystemCost">-</strong></div>
               </div>
+            </div>
+          </div>
+
+          <div class="grid-two">
+            <div class="panel">
+              <div class="table-head">
+                <h3>Динамика по вашему звену</h3>
+                <span class="hint">Только ваши данные</span>
+              </div>
+              <div class="chart-stack">
+                <div>
+                  <span class="chart-label">Заказы</span>
+                  <div id="ordersChart" class="mini-chart"></div>
+                </div>
+                <div>
+                  <span class="chart-label">Запасы</span>
+                  <div id="inventoryChart" class="mini-chart"></div>
+                </div>
+                <div>
+                  <span class="chart-label">Backlog</span>
+                  <div id="backlogChart" class="mini-chart"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="table-head">
+                <h3>Лента событий</h3>
+                <span class="hint">Без раскрытия чужих чисел</span>
+              </div>
+              <div id="activityFeed" class="activity-feed"></div>
             </div>
           </div>
 
