@@ -179,6 +179,37 @@ func TestExportSessionReturnsFile(t *testing.T) {
 	}
 }
 
+func TestGetPlayerStateReturnsOnlyOwnNode(t *testing.T) {
+	gameService, _, room := newStartedGameServices(t)
+
+	for _, player := range room.Players {
+		if _, err := gameService.SubmitOrder(context.Background(), room.ID, player.ID, 4); err != nil {
+			t.Fatalf("SubmitOrder() error = %v", err)
+		}
+	}
+	if _, err := gameService.AdvanceWeek(context.Background(), room.ID); err != nil {
+		t.Fatalf("AdvanceWeek() error = %v", err)
+	}
+
+	player := room.Players[0]
+	state, err := gameService.GetPlayerState(context.Background(), room.ID, player.ID)
+	if err != nil {
+		t.Fatalf("GetPlayerState() error = %v", err)
+	}
+	if state.PlayerID != player.ID {
+		t.Fatalf("player id = %s, want %s", state.PlayerID, player.ID)
+	}
+	if state.OwnNode == nil {
+		t.Fatal("OwnNode is nil")
+	}
+	if state.OwnNode.Role != player.Role {
+		t.Fatalf("own node role = %s, want %s", state.OwnNode.Role, player.Role)
+	}
+	if len(state.OwnHistory) != 1 {
+		t.Fatalf("own history length = %d, want 1", len(state.OwnHistory))
+	}
+}
+
 func TestSubmitOrderPublishesRoomEvent(t *testing.T) {
 	roomStore := memory.NewRoomStore()
 	sessionStore := memory.NewSessionStore()

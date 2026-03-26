@@ -37,12 +37,23 @@
 - `POST /rooms/{roomId}/start`
 - `POST /rooms/{roomId}/orders`
 - `POST /rooms/{roomId}/next`
+- `GET /rooms/{roomId}/state?player_id=...`
 - `GET /rooms/{roomId}/session`
 - `GET /rooms/{roomId}/weeks`
 - `GET /rooms/{roomId}/analytics`
 - `GET /rooms/{roomId}/decisions`
 - `GET /rooms/{roomId}/export`
-- `GET /rooms/{roomId}/events` (`SSE`)
+- `GET /rooms/{roomId}/events?player_id=...` (`SSE`)
+
+## Приватность игроков
+
+Для клиентского интерфейса используются player-specific endpoints:
+
+- `GET /rooms/{roomId}/state?player_id=...`
+- `GET /rooms/{roomId}/events?player_id=...`
+
+Они возвращают только состояние текущего игрока, его историю, его аналитику и общие метаданные комнаты.
+Текущие запасы, backlog, заказы и отгрузки других игроков через frontend не раскрываются.
 
 ## Запуск
 
@@ -72,6 +83,13 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 
 - [`.env.example`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/.env.example)
 - [`Makefile`](/Users/george/ Учёба/Мат Модели/StocksAndRequests/Makefile)
+
+## Frontend
+
+Встроенный frontend уже отдаётся самим Go-сервером:
+
+- `/` -> redirect на `/app`
+- `/app` -> SPA интерфейс комнаты
 
 ## Следующие шаги
 

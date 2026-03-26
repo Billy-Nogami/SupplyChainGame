@@ -3,11 +3,9 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
-	"supply-chain-simulator/internal/domain"
 	"supply-chain-simulator/internal/usecase"
 )
 
@@ -16,6 +14,11 @@ type RoomEventSubscriber interface {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, roomID string) {
+	playerID := r.URL.Query().Get("player_id")
+	if playerID == "" {
+		writeError(w, http.StatusBadRequest, "player_id is required")
+		return
+	}
 	if s.events == nil {
 		writeError(w, http.StatusServiceUnavailable, "room events are not configured")
 		return
@@ -27,7 +30,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, roomID str
 		return
 	}
 
-	initialEvent, err := s.snapshotEvent(r.Context(), roomID)
+	initialEvent, err := s.snapshotEvent(r.Context(), roomID, playerID)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -52,46 +55,37 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, roomID str
 			if !ok {
 				return
 			}
-			writeSSEEvent(w, event)
+			playerState, err := s.gameService.GetPlayerState(context.Background(), roomID, playerID)
+			if err != nil {
+				continue
+			}
+			writeSSEEvent(w, usecase.PlayerRoomEvent{
+				Type:  event.Type,
+				State: playerState,
+			})
 			flusher.Flush()
 		}
 	}
 }
 
-func (s *Server) snapshotEvent(ctx context.Context, roomID string) (usecase.RoomEvent, error) {
-	room, err := s.roomService.GetRoom(ctx, roomID)
+func (s *Server) snapshotEvent(ctx context.Context, roomID, playerID string) (usecase.PlayerRoomEvent, error) {
+	_, err := s.roomService.GetRoom(ctx, roomID)
 	if err != nil {
-		return usecase.RoomEvent{}, err
+		return usecase.PlayerRoomEvent{}, err
 	}
 
-	event := usecase.RoomEvent{
-		Type:   "room.snapshot",
-		RoomID: roomID,
-		Room:   &room,
+	state, err := s.gameService.GetPlayerState(ctx, roomID, playerID)
+	if err != nil {
+		return usecase.PlayerRoomEvent{}, err
 	}
 
-	session, err := s.gameService.GetSessionByRoom(ctx, roomID)
-	if err == nil {
-		analytics, analyticsErr := s.gameService.GetAnalytics(ctx, roomID)
-		if analyticsErr != nil {
-			return usecase.RoomEvent{}, analyticsErr
-		}
-		decisions, decisionsErr := s.gameService.GetPendingDecisions(ctx, roomID)
-		if decisionsErr != nil {
-			return usecase.RoomEvent{}, decisionsErr
-		}
-
-		event.Session = &session
-		event.Analytics = &analytics
-		event.Decisions = &decisions
-	} else if err != nil && !errors.Is(err, domain.ErrSessionNotFound) {
-		return usecase.RoomEvent{}, err
-	}
-
-	return event, nil
+	return usecase.PlayerRoomEvent{
+		Type:  "room.snapshot",
+		State: state,
+	}, nil
 }
 
-func writeSSEEvent(w http.ResponseWriter, event usecase.RoomEvent) {
+func writeSSEEvent(w http.ResponseWriter, event usecase.PlayerRoomEvent) {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return

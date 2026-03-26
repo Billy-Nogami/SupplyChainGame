@@ -251,6 +251,70 @@ func (s *GameService) GetPendingDecisions(ctx context.Context, roomID string) (W
 	return decisions.Snapshot(), nil
 }
 
+func (s *GameService) GetPlayerState(ctx context.Context, roomID, playerID string) (PlayerGameState, error) {
+	room, err := s.roomStore.GetByID(ctx, roomID)
+	if err != nil {
+		return PlayerGameState{}, err
+	}
+
+	player, err := findPlayer(room, playerID)
+	if err != nil {
+		return PlayerGameState{}, err
+	}
+
+	state := PlayerGameState{
+		RoomID:      room.ID,
+		PlayerID:    player.ID,
+		PlayerName:  player.Name,
+		Role:        player.Role,
+		RoomStatus:  room.Status,
+		CurrentWeek: room.CurrentWeek,
+		MaxWeeks:    room.MaxWeeks,
+		ScenarioID:  room.ScenarioID,
+		Players:     toPlayerSummaries(room),
+		OwnHistory:  []domain.NodeState{},
+	}
+
+	if room.Status == domain.GameStatusWaiting {
+		return state, nil
+	}
+
+	session, err := s.sessionStore.GetByRoomID(ctx, roomID)
+	if err != nil {
+		return PlayerGameState{}, err
+	}
+
+	decisions, err := s.GetPendingDecisions(ctx, roomID)
+	if err != nil {
+		return PlayerGameState{}, err
+	}
+
+	analytics := domain.CalculateSessionAnalytics(session)
+	ownNode := nodeByRole(session.Nodes, player.Role)
+	ownHistory := make([]domain.NodeState, 0, len(session.History))
+	for _, week := range session.History {
+		ownHistory = append(ownHistory, nodeByRole(week.Nodes, player.Role))
+	}
+
+	state.CurrentWeek = currentPlayableWeek(session)
+	state.ScenarioID = session.Scenario.ID
+	state.OrdersSubmitted = len(decisions.SubmittedRoles)
+	state.OrdersExpected = len(domain.AllRoles)
+	state.WeekReady = decisions.Ready
+	state.OwnNode = &ownNode
+	state.OwnHistory = ownHistory
+	state.TotalSystemCost = analytics.TotalCost
+	if ownOrder, ok := decisions.Orders[player.Role]; ok {
+		state.OwnOrderSubmitted = true
+		state.OwnCurrentOrder = ownOrder
+	}
+	if ownAnalytics, ok := playerAnalyticsByRole(analytics, player.Role); ok {
+		state.OwnAnalytics = &ownAnalytics
+	}
+
+	return state, nil
+}
+
 func (s *GameService) resolveScenario(ctx context.Context, scenarioID string) (domain.Scenario, error) {
 	if scenarioID == "" {
 		return s.scenarios.GetDefault(ctx)
@@ -264,6 +328,58 @@ func currentPlayableWeek(session domain.GameSession) int {
 		return session.CurrentWeek
 	}
 	return session.CurrentWeek + 1
+}
+
+func findPlayer(room domain.Room, playerID string) (domain.Player, error) {
+	for _, player := range room.Players {
+		if player.ID == playerID {
+			return player, nil
+		}
+	}
+
+	return domain.Player{}, domain.ErrPlayerNotFound
+}
+
+func toPlayerSummaries(room domain.Room) []PlayerSummary {
+	players := make([]PlayerSummary, 0, len(room.Players))
+	for _, player := range room.Players {
+		players = append(players, PlayerSummary{
+			Name:      player.Name,
+			Role:      player.Role,
+			Connected: player.Connected,
+		})
+	}
+
+	return players
+}
+
+func playerAnalyticsByRole(analytics domain.SessionAnalytics, role domain.Role) (PlayerAnalytics, bool) {
+	for _, node := range analytics.NodeAnalytics {
+		if node.Role != role {
+			continue
+		}
+
+		return PlayerAnalytics{
+			Role:             node.Role,
+			TotalCost:        node.TotalCost,
+			AverageInventory: node.AverageInventory,
+			TotalBacklog:     node.TotalBacklog,
+			TotalOrders:      node.TotalOrders,
+			OrderVariance:    node.OrderVariance,
+		}, true
+	}
+
+	return PlayerAnalytics{}, false
+}
+
+func nodeByRole(nodes []domain.NodeState, role domain.Role) domain.NodeState {
+	for _, node := range nodes {
+		if node.Role == role {
+			return node
+		}
+	}
+
+	return domain.NodeState{Role: role}
 }
 
 func (s *GameService) publishRoomEvent(

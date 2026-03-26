@@ -23,6 +23,7 @@ type GameService interface {
 	StartGame(ctx context.Context, roomID, scenarioID string) (domain.GameSession, error)
 	SubmitOrder(ctx context.Context, roomID, playerID string, order int) (usecase.WeeklyDecisionsSnapshot, error)
 	AdvanceWeek(ctx context.Context, roomID string) (domain.WeekState, error)
+	GetPlayerState(ctx context.Context, roomID, playerID string) (usecase.PlayerGameState, error)
 	GetSessionByRoom(ctx context.Context, roomID string) (domain.GameSession, error)
 	GetWeeks(ctx context.Context, roomID string) ([]domain.WeekState, error)
 	GetAnalytics(ctx context.Context, roomID string) (domain.SessionAnalytics, error)
@@ -77,6 +78,9 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) registerRoutes() {
+	s.mux.HandleFunc("GET /{$}", s.handleRoot)
+	s.mux.HandleFunc("GET /app", s.handleApp)
+	s.mux.Handle("GET /static/", http.StripPrefix("/static/", staticFileHandler()))
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("POST /rooms", s.handleCreateRoom)
 	s.mux.HandleFunc("GET /rooms/", s.handleGetRoomResource)
@@ -121,6 +125,18 @@ func (s *Server) handleGetRoomResource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, room)
+	case "state":
+		playerID := r.URL.Query().Get("player_id")
+		if playerID == "" {
+			writeError(w, http.StatusBadRequest, "player_id is required")
+			return
+		}
+		state, err := s.gameService.GetPlayerState(r.Context(), roomID, playerID)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
 	case "session":
 		session, err := s.gameService.GetSessionByRoom(r.Context(), roomID)
 		if err != nil {

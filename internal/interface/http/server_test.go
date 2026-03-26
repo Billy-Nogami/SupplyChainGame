@@ -59,6 +59,11 @@ func TestServerRoomGameplayFlow(t *testing.T) {
 		t.Fatalf("analytics total cost = %d, want 48", analytics.TotalCost)
 	}
 
+	playerState := getPlayerState(t, server, room.ID, players[0].ID)
+	if playerState.PlayerID != players[0].ID {
+		t.Fatalf("player state player id = %s, want %s", playerState.PlayerID, players[0].ID)
+	}
+
 	exported := exportSession(t, server, room.ID)
 	if len(exported) == 0 {
 		t.Fatal("exported file is empty")
@@ -70,6 +75,21 @@ func TestServerRoomGameplayFlow(t *testing.T) {
 	decisions := getDecisions(t, server, room.ID)
 	if decisions.Week != 2 {
 		t.Fatalf("decisions week = %d, want 2", decisions.Week)
+	}
+}
+
+func TestAppPageIsServed(t *testing.T) {
+	server := newTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/app", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("app status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), "Supply Chain Simulator") {
+		t.Fatalf("app body does not contain title")
 	}
 }
 
@@ -95,11 +115,13 @@ func TestWithCORSPrefight(t *testing.T) {
 func TestRoomEventsStreamReturnsInitialSnapshot(t *testing.T) {
 	server := newTestServer()
 	room := createRoom(t, server)
+	room = joinRoom(t, server, room.ID, "Alice")
+	playerID := room.Players[0].ID
 
 	testServer := httptest.NewServer(server.Handler())
 	defer testServer.Close()
 
-	resp, err := http.Get(testServer.URL + "/rooms/" + room.ID + "/events")
+	resp, err := http.Get(testServer.URL + "/rooms/" + room.ID + "/events?player_id=" + playerID)
 	if err != nil {
 		t.Fatalf("http.Get(events) error = %v", err)
 	}
@@ -118,6 +140,9 @@ func TestRoomEventsStreamReturnsInitialSnapshot(t *testing.T) {
 	}
 	if !strings.Contains(dataLine, "\"room_id\":\""+room.ID+"\"") {
 		t.Fatalf("data line = %q, want room id payload", dataLine)
+	}
+	if !strings.Contains(dataLine, "\"player_id\":\""+playerID+"\"") {
+		t.Fatalf("data line = %q, want player id payload", dataLine)
 	}
 }
 
@@ -313,6 +338,25 @@ func getAnalytics(t *testing.T, server *Server, roomID string) domain.SessionAna
 	}
 
 	return analytics
+}
+
+func getPlayerState(t *testing.T, server *Server, roomID, playerID string) usecase.PlayerGameState {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/rooms/"+roomID+"/state?player_id="+playerID, nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get player state status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var state usecase.PlayerGameState
+	if err := json.Unmarshal(rec.Body.Bytes(), &state); err != nil {
+		t.Fatalf("json.Unmarshal(player state) error = %v", err)
+	}
+
+	return state
 }
 
 func exportSession(t *testing.T, server *Server, roomID string) []byte {

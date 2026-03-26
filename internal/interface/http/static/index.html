@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Supply Chain Simulator</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Supply Chain Simulator</p>
+          <h1>Многопользовательская симуляция цепи поставок</h1>
+          <p class="subtitle">
+            Игрок видит только своё звено, свои решения и общую динамику комнаты.
+          </p>
+        </div>
+        <div class="hero-badge" id="connectionBadge">offline</div>
+      </header>
+
+      <main class="layout">
+        <section class="card card-auth">
+          <h2>Вход в комнату</h2>
+          <div class="grid-two">
+            <form id="createForm" class="stack">
+              <label>
+                Ваше имя
+                <input id="createName" name="name" placeholder="Например, Billy" required />
+              </label>
+              <label>
+                Количество недель
+                <input id="createWeeks" name="weeks" type="number" min="1" value="30" required />
+              </label>
+              <button type="submit" class="button primary">Создать комнату</button>
+            </form>
+
+            <form id="joinForm" class="stack">
+              <label>
+                ID комнаты
+                <input id="joinRoomId" name="room_id" placeholder="room id" required />
+              </label>
+              <label>
+                Ваше имя
+                <input id="joinName" name="name" placeholder="Например, Billy" required />
+              </label>
+              <button type="submit" class="button secondary">Подключиться</button>
+            </form>
+          </div>
+          <div class="resume-row">
+            <button id="resumeButton" class="button ghost" type="button">Вернуться в последнюю комнату</button>
+          </div>
+        </section>
+
+        <section class="card card-room">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Комната</p>
+              <h2 id="roomTitle">Нет активной комнаты</h2>
+            </div>
+            <div class="room-chip" id="roomStatus">waiting</div>
+          </div>
+
+          <div class="room-meta">
+            <div>
+              <span class="meta-label">Игрок</span>
+              <strong id="playerIdentity">-</strong>
+            </div>
+            <div>
+              <span class="meta-label">Роль</span>
+              <strong id="playerRole">-</strong>
+            </div>
+            <div>
+              <span class="meta-label">Неделя</span>
+              <strong id="currentWeek">-</strong>
+            </div>
+          </div>
+
+          <div class="grid-two">
+            <div class="panel">
+              <h3>Игроки комнаты</h3>
+              <div id="playersList" class="players-list"></div>
+            </div>
+            <div class="panel">
+              <h3>Выбор роли</h3>
+              <div id="roleButtons" class="role-grid"></div>
+              <button id="startGameButton" class="button primary wide" type="button">Запустить игру</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card card-game">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Ваше звено</p>
+              <h2 id="gameTitle">Данные игрока</h2>
+            </div>
+            <div class="room-chip accent" id="weekReadyChip">ожидание ходов</div>
+          </div>
+
+          <div class="metrics-grid" id="metricsGrid">
+            <div class="metric"><span>Входящий заказ</span><strong id="metricIncomingOrder">-</strong></div>
+            <div class="metric"><span>Поступление товара</span><strong id="metricIncomingGoods">-</strong></div>
+            <div class="metric"><span>Запас</span><strong id="metricInventory">-</strong></div>
+            <div class="metric"><span>Дефицит</span><strong id="metricBacklog">-</strong></div>
+            <div class="metric"><span>Отгрузка</span><strong id="metricShipment">-</strong></div>
+            <div class="metric"><span>Затраты недели</span><strong id="metricCost">-</strong></div>
+          </div>
+
+          <div class="grid-two">
+            <form id="orderForm" class="panel stack">
+              <h3>Ваш заказ</h3>
+              <label>
+                Объем заказа
+                <input id="orderInput" type="number" min="0" value="4" required />
+              </label>
+              <button class="button primary" type="submit">Отправить заказ</button>
+              <p class="hint" id="orderHint">Заказ ещё не отправлен.</p>
+              <button id="advanceWeekButton" class="button secondary" type="button">Перейти к следующей неделе</button>
+            </form>
+
+            <div class="panel stack">
+              <h3>Личная аналитика</h3>
+              <div class="analytics-list">
+                <div><span>Суммарные затраты</span><strong id="analyticsCost">-</strong></div>
+                <div><span>Средний запас</span><strong id="analyticsInventory">-</strong></div>
+                <div><span>Суммарный backlog</span><strong id="analyticsBacklog">-</strong></div>
+                <div><span>Суммарные заказы</span><strong id="analyticsOrders">-</strong></div>
+                <div><span>Общие затраты системы</span><strong id="analyticsSystemCost">-</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="table-head">
+              <h3>История по вашему звену</h3>
+              <button id="downloadExcelButton" class="button ghost" type="button">Скачать Excel</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Неделя</th>
+                    <th>Заказ</th>
+                    <th>Приход</th>
+                    <th>Запас</th>
+                    <th>Backlog</th>
+                    <th>Отгрузка</th>
+                    <th>Затраты</th>
+                  </tr>
+                </thead>
+                <tbody id="historyTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+  </html>
